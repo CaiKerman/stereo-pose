@@ -160,7 +160,7 @@ def run(args, cfg):
         "commodity webcam exposure timing is not hardware-synchronised."
     )
     print("Hotkeys: C=calibration | F=smoothing on/off | G=cleanup | P=pin calib | Q/ESC=quit")
-    print("Calibration: wait for STABLE | SPACE=manual(still required) | R=solve | X=discard | C=return\n")
+    print("Calibration: AUTO waits for STABLE | SPACE=manual force capture | R=solve | X=discard | C=return\n")
 
     frame_index = 0
     kp_conf = float(p["keypoint_confidence"])
