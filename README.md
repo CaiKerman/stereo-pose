@@ -2,11 +2,16 @@
 
 Stereo-camera 3D human pose measurement and calibration system.
 
+The proof-of-concept stereo pipeline (v1.2) is validated and preserved under
+[`reference/v1_2/`](reference/v1_2/). The repository is now entering formal
+engineering; the formal implementation lives under [`src/stereo_pose/`](src/stereo_pose/).
+
 ## Project status
 
-The proof-of-concept stereo pipeline is working. The repository is now entering formal engineering.
-
 Current work is always declared in [CURRENT_TASK.md](CURRENT_TASK.md).
+
+- Task 001 (baseline freeze + engineering foundation) — see
+  [docs/instructions/001_BASELINE_ENGINEERING.md](docs/instructions/001_BASELINE_ENGINEERING.md).
 
 ## For coding agents
 
@@ -19,9 +24,77 @@ Before changing any file:
 5. Do **not** commit directly to `main`.
 6. Finish by updating the review artifacts required by `AGENTS.md` and opening/updating a pull request.
 
-## Core product scope
+## Repository layout
 
-The planned product covers:
+```text
+stereo-pose/
+├─ AGENTS.md                 # repo-wide agent contract
+├─ CURRENT_TASK.md           # active task declaration
+├─ pyproject.toml            # packaging (src layout)
+├─ configs/
+│  ├─ default.json           # validated default configuration
+│  └─ schemas/default.schema.json
+├─ src/stereo_pose/          # formal implementation
+│  ├─ capture/               # camera acquisition
+│  ├─ calibration/           # collection, solver, selection, metadata
+│  ├─ pose/                  # pose inference + device resolution
+│  ├─ geometry/              # rectified triangulation
+│  ├─ filtering/             # One Euro smoothing
+│  ├─ quality/               # measurement quality gates
+│  ├─ coordinates/           # rigid transform scaffold
+│  ├─ outputs/               # publishers + v1 message adapter
+│  ├─ diagnostics/           # logging + offline doctor
+│  ├─ persistence/           # runtime artifact cleanup
+│  └─ app/                   # live pipeline orchestration
+├─ tests/                    # unit + regression + integration
+├─ runtime/                  # managed runtime artifacts (gitignored)
+└─ reference/v1_2/           # immutable validated PoC baseline
+```
+
+## Installing and running
+
+The core package needs only NumPy and OpenCV. Install:
+
+```bash
+pip install -e .
+```
+
+For live-camera pose inference, also install the optional dependency set
+(ultralytics + torch):
+
+```bash
+pip install -e .[live]
+```
+
+### Offline doctor
+
+Check environment health without network, cameras, CUDA, or model weights:
+
+```bash
+python -m stereo_pose doctor
+```
+
+### Runtime
+
+Put a local pose model (e.g. `yolo11n-pose.pt`) at the path configured in
+`config.pose.model`, then run the live pipeline:
+
+```bash
+python -m stereo_pose run --config config.json
+```
+
+Run-time generated artifacts (calibrations, sessions, logs, captures) stay
+under `runtime/` and are not committed.
+
+## Running tests
+
+```bash
+python -m unittest discover -s tests -t .
+```
+
+All deterministic tests run without webcams, CUDA, or model weights.
+
+## Core product scope
 
 - dual-camera acquisition and diagnostics;
 - stereo calibration and runtime recalibration;
@@ -37,7 +110,8 @@ The planned product covers:
 
 ## Important coordinate convention
 
-The current proof-of-concept outputs coordinates in the rectified-left-camera coordinate system.
+The current proof-of-concept outputs coordinates in the **rectified-left-camera**
+coordinate system.
 
 The future world coordinate system will require:
 
@@ -46,8 +120,15 @@ The future world coordinate system will require:
 - origin and X/Y direction = user calibrated;
 - no X/Y convention may be invented without an explicit project decision.
 
+## Documentation
+
+- [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) — modules and boundaries
+- [docs/architecture/DATA_FLOW.md](docs/architecture/DATA_FLOW.md) — pipeline data flow
+- [docs/protocols/POSE_MESSAGE_V1.md](docs/protocols/POSE_MESSAGE_V1.md) — output message contract
+- [docs/calibration/STEREO_CALIBRATION.md](docs/calibration/STEREO_CALIBRATION.md) — calibration artifact + policy
+- [MIGRATION_NOTES.md](MIGRATION_NOTES.md) — v1.2 → formal migration notes
+
 ## Collaboration
 
-The repository is the source of truth shared by the owner, architecture/review agent, and implementation agents.
-
-See [docs/agent/WORKFLOW.md](docs/agent/WORKFLOW.md).
+The repository is the source of truth shared by the owner, architecture/review
+agent, and implementation agents. See [docs/agent/WORKFLOW.md](docs/agent/WORKFLOW.md).

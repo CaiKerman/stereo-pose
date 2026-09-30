@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stereo-pose"
+version = "0.1.0"
+description = "Stereo-camera 3D human pose measurement and calibration system"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Proprietary" }
+authors = [{ name = "Stereo Pose project" }]
+dependencies = [
+    "numpy>=1.22",
+    "opencv-python>=4.6",
+]
+
+[project.optional-dependencies]
+# Live-camera / pose inference dependencies. Intentional extra so that the
+# package, deterministic tests, and doctor command can run offline without
+# torch/ultralytics installed.
+live = [
+    "ultralytics",
+    "torch",
+]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+stereo-pose-doctor = "stereo_pose.diagnostics.doctor:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+stereo_pose = ["py.typed"]
