@@ -84,8 +84,9 @@ def main() -> None:
 
         print("\n" + "=" * 72)
         print("Stereo Pose live test")
-        print("C=calibration | SPACE=capture | R=solve | P=pin/save")
-        print("F=filter on/off | G=cleanup | Q/ESC=quit")
+        print("C=calibration  AUTO waits for STABLE  SPACE=manual capture")
+        print("R=solve  X=discard  P=pin/save  F=filter on/off")
+        print("D=per-joint diagnostics  V=validate board  G=cleanup  Q/ESC=quit")
         print("=" * 72 + "\n")
 
         from stereo_pose.app.runner import main as run_main

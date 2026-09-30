@@ -55,6 +55,31 @@ Each joint is rejected at the first failed gate and counted in
 4. quality score (`min_quality_score`);
 5. speed (`max_joint_speed_mm_s`).
 
+Task 002 adds fine-grained per-joint observability on top of this: `classify_joint`
+assigns each selected joint exactly one terminal state (`accepted`, left/right/both
+keypoint confidence, geometry unavailable, epipolar, reprojection, depth below/above,
+quality score, speed, calibration unavailable, missing pose). The coarse
+`frame_quality.rejected` buckets are preserved by mapping each fine state through
+`aggregate_bucket`; `accepted`, `missing pose`, and `calibration unavailable` map
+to no bucket, matching the v1.2 behavior of skipping the joint loop when there was
+no person or no calibration. The structured result is stored internally on
+`PoseFrame.diagnostics` (`FrameDiagnostics`) and only surfaced as text via the `D`
+hotkey — it is never serialized onto the `stereo_pose_3d/v1.2` wire.
+
+## Validation path (V hotkey)
+
+`app.runner` also supports a single-frame metric capture triggered by `V`:
+
+1. detect the full corner grid in both live views
+   (`validation.detect_checkerboard`, same detector as calibration);
+2. triangulate every matched corner with the active calibration;
+3. compute spacing/flatness/stereo metrics
+   (`validation.compute_metric_validation`);
+4. render a console summary and persist a JSON report under `runtime/validation/`.
+
+All metrics are single-frame (`sample_mode=single_frame`), in rectified-left-camera
+coordinates, millimetres, with no world-coordinate convention.
+
 ## Calibration path
 
 Runtime calibration (`RuntimeCalibration`) is a separate mode. It:
@@ -79,6 +104,7 @@ runtime/
 ├─ calibrations/auto/stereo_*.npz          # rolling calibrations (cleanup-managed)
 ├─ calibrations/saved/<name>.npz(.meta.json)  # user-pinned library (never auto-cleaned)
 ├─ sessions/session_*/left|right/*.png        # captured calibration source (transient)
+├─ validation/metric_YYYYMMDD_HHMMSS.json     # metric-validation reports (evidence)
 ├─ logs/stereo_pose.log                       # rotating logs
 └─ captures/                                  # reserved for future captures
 ```
@@ -86,4 +112,4 @@ runtime/
 Cleanup (`persistence.cleanup`) only operates inside these managed roots, requires
 a mandatory trusted runtime root, touches only `calibrations/auto/` and the
 session area, checks deletion candidates against the safety guard before
-deleting, and never deletes `saved/`.
+deleting, and never deletes `saved/` or `validation/`.

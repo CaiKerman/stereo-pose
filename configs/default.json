@@ -76,6 +76,10 @@
       "port": 5005
     }
   },
+  "diagnostics": {
+    "enabled": false,
+    "every_n_frames": 10
+  },
   "runtime": {
     "root": "runtime",
     "show_preview": true,
