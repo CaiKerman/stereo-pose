@@ -2,7 +2,7 @@
 
 ## Task 001 — Review round 2
 
-Status: **RESOLVED — pending owner re-review**
+Status: **CLOSED — reviewer accepted for merge**
 
 This file is the repository-visible mirror of actionable PR review feedback. Implementation agents must treat unresolved items here as blocking even if they cannot access private GitHub PR comments.
 
@@ -60,3 +60,12 @@ Resolution: the destination is created with exclusive creation (`open(..., "xb")
 - [x] mark each item above RESOLVED with a short implementation note
 - [x] push to the existing PR #1
 - [x] do not merge
+
+## Reviewer disposition
+
+All four Review Round 2 blocking items were re-checked against the implementation and tests and are accepted.
+
+Task 001 is ready to merge into `main`.
+
+Non-blocking future hardening:
+- Saved calibration promotion currently writes the NPZ and sidecar metadata as two filesystem operations. Normal collision handling is safe and non-overwriting, but an interruption between the two writes can leave an orphan artifact. A future Calibration Manager may prefer an atomic profile-directory publish pattern (prepare complete profile in a temporary directory, then rename into the saved library).
