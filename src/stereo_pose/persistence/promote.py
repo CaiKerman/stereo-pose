@@ -28,6 +28,25 @@ def library_meta_path(npz_path: Path) -> Path:
     return npz_path.with_suffix(".meta.json")
 
 
+def _write_exclusive(data: bytes, saved: Path, base_name: str) -> Path:
+    """Write ``data`` to a fresh ``saved/<base_name>.npz`` without overwriting.
+
+    Uses exclusive creation (``open(..., "xb")``) and appends an incrementing
+    counter on collision, so rapid same-name promotions always land on distinct
+    files.
+    """
+    dest = saved / f"{base_name}.npz"
+    counter = 1
+    while True:
+        try:
+            with open(dest, "xb") as fh:
+                fh.write(data)
+            return dest
+        except FileExistsError:
+            dest = saved / f"{base_name}_{counter}.npz"
+            counter += 1
+
+
 def promote_calibration(src_path, calibration_dir, name=None, notes=None, source="promoted"):
     """Copy ``src_path`` into the ``saved/`` library and record its metadata.
 
@@ -58,16 +77,13 @@ def promote_calibration(src_path, calibration_dir, name=None, notes=None, source
     saved.mkdir(parents=True, exist_ok=True)
 
     base_name = _sanitize(name) if name else src.stem
-    dest = saved / f"{base_name}.npz"
-
-    # Never overwrite an existing pinned artifact; disambiguate with a stamp.
-    if dest.exists():
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        dest = saved / f"{base_name}_{stamp}.npz"
 
     data = src.read_bytes()
     sha256 = hashlib.sha256(data).hexdigest()
-    dest.write_bytes(data)
+
+    # Never overwrite an existing pinned NPZ: exclusive creation disambiguates
+    # rapid same-name promotions with an incrementing counter.
+    dest = _write_exclusive(data, saved, base_name)
 
     meta = {
         "name": name or src.stem,
@@ -77,8 +93,7 @@ def promote_calibration(src_path, calibration_dir, name=None, notes=None, source
         "original_path": str(src.resolve()),
         "sha256": sha256,
     }
-    library_meta_path(dest).write_text(
-        json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    sidecar = library_meta_path(dest)
+    with open(sidecar, "x", encoding="utf-8") as fh:
+        fh.write(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
     return dest

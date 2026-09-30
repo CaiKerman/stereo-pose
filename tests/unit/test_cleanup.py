@@ -5,7 +5,9 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import stereo_pose.persistence.cleanup as cleanup_mod
 from stereo_pose.persistence import CleanupSafetyError, cleanup_project, ensure_managed_location
 
 
@@ -35,7 +37,7 @@ class TestCleanupAutoRetention(unittest.TestCase):
                 p = auto / f"stereo_{i:04d}_000000.npz"
                 p.write_bytes(b"x")
                 os.utime(p, (1000 + i, 1000 + i))
-            removed = cleanup_project(cal, Path(d) / "sess", keep_latest=4, failed_days=7, verbose=False)
+            removed = cleanup_project(cal, Path(d) / "sess", runtime_root=Path(d), keep_latest=4, failed_days=7, verbose=False)
             remaining = sorted(auto.glob("stereo_*.npz"), key=lambda p: p.name)
             self.assertEqual(len(remaining), 4)
             self.assertEqual([p.name for p in remaining], [f"stereo_{i:04d}_000000.npz" for i in range(6, 10)])
@@ -51,7 +53,7 @@ class TestCleanupAutoRetention(unittest.TestCase):
             (auto / "other.npz").write_bytes(b"keep")
             (auto / "readme.txt").write_text("keep")
             (saved / "pinned_old.npz").write_bytes(b"keep")
-            cleanup_project(cal, Path(d) / "sess", keep_latest=1, failed_days=7, verbose=False)
+            cleanup_project(cal, Path(d) / "sess", runtime_root=Path(d), keep_latest=1, failed_days=7, verbose=False)
             self.assertTrue((auto / "other.npz").exists())
             self.assertTrue((auto / "readme.txt").exists())
             self.assertTrue((saved / "pinned_old.npz").exists())
@@ -70,7 +72,7 @@ class TestCleanupSavedProtection(unittest.TestCase):
                 p = saved / f"profile_{i:02d}.npz"
                 p.write_bytes(b"keep")
                 _utime_days_ago(p, 365)
-            cleanup_project(cal, Path(d) / "sess", keep_latest=1, failed_days=7, verbose=False)
+            cleanup_project(cal, Path(d) / "sess", runtime_root=Path(d), keep_latest=1, failed_days=7, verbose=False)
             self.assertEqual(len(list(saved.glob("*.npz"))), 8)
 
     def test_imported_artifact_cannot_be_auto_deleted(self):
@@ -80,7 +82,7 @@ class TestCleanupSavedProtection(unittest.TestCase):
             imported = saved / "imported_2020.npz"
             imported.write_bytes(b"immutable")
             _utime_days_ago(imported, 1000)
-            cleanup_project(cal, Path(d) / "sess", keep_latest=1, failed_days=7, verbose=False)
+            cleanup_project(cal, Path(d) / "sess", runtime_root=Path(d), keep_latest=1, failed_days=7, verbose=False)
             self.assertTrue(imported.exists())
 
 
@@ -130,6 +132,38 @@ class TestCleanupRootGuard(unittest.TestCase):
                 cleanup_project(cal, trusted / "sessions", keep_latest=1, failed_days=7, verbose=False, runtime_root=trusted)
             self.assertTrue(outside.exists())
 
+    def test_omitting_runtime_root_refuses_cleanup(self):
+        with tempfile.TemporaryDirectory() as d:
+            cal = Path(d) / "cal"
+            auto = _auto(cal)
+            (auto / "stereo_0001_000000.npz").write_bytes(b"x")
+            with self.assertRaises(TypeError):
+                cleanup_project(cal, Path(d) / "sess", keep_latest=1, failed_days=7, verbose=False)
+
+    def test_none_runtime_root_refuses_before_deletion(self):
+        with tempfile.TemporaryDirectory() as d:
+            cal = Path(d) / "cal"
+            auto = _auto(cal)
+            p = auto / "stereo_0001_000000.npz"
+            p.write_bytes(b"x")
+            with self.assertRaises(CleanupSafetyError):
+                cleanup_project(cal, Path(d) / "sess", runtime_root=None, keep_latest=1, failed_days=7, verbose=False)
+            self.assertTrue(p.exists())
+
+
+class TestCleanupMassDeletionGuard(unittest.TestCase):
+    def test_over_limit_cleanup_aborts_before_deleting_anything(self):
+        with tempfile.TemporaryDirectory() as d:
+            cal = Path(d) / "cal"
+            auto = _auto(cal)
+            for i in range(6):
+                (auto / f"stereo_{i:04d}_000000.npz").write_bytes(b"x")
+            with mock.patch.object(cleanup_mod, "_MAX_REMOVED_GUARD", 3):
+                with self.assertRaises(CleanupSafetyError):
+                    cleanup_project(cal, Path(d) / "sess", runtime_root=Path(d), keep_latest=1, failed_days=7, verbose=False)
+            # Every candidate is still present: nothing was deleted before the guard fired.
+            self.assertEqual(len(list(auto.glob("stereo_*.npz"))), 6)
+
 
 class TestCleanupSessions(unittest.TestCase):
     def test_removes_only_old_session_dirs(self):
@@ -144,7 +178,7 @@ class TestCleanupSessions(unittest.TestCase):
                 folder.mkdir()
             _utime_days_ago(old, 30)
 
-            cleanup_project(cal, sess, keep_latest=10, failed_days=7, verbose=False)
+            cleanup_project(cal, sess, runtime_root=Path(d), keep_latest=10, failed_days=7, verbose=False)
 
             self.assertFalse(old.exists())
             self.assertTrue(recent.exists())

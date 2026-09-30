@@ -52,7 +52,7 @@ class TestPromoteCalibration(unittest.TestCase):
             for i in range(6):
                 _write_npz(auto / f"stereo_{i:04d}_000000.npz")
 
-            cleanup_project(cal, Path(d) / "sess", keep_latest=1, failed_days=7, verbose=False)
+            cleanup_project(cal, Path(d) / "sess", runtime_root=Path(d), keep_latest=1, failed_days=7, verbose=False)
 
             self.assertTrue(dest.exists())
             self.assertTrue(library_meta_path(dest).exists())
@@ -63,7 +63,7 @@ class TestPromoteCalibration(unittest.TestCase):
             src = Path(d) / "fresh.npz"
             _write_npz(src)
             dest = promote_calibration(src, cal, source="promoted")
-            cleanup_project(cal, Path(d) / "sess", keep_latest=1, failed_days=7, verbose=False)
+            cleanup_project(cal, Path(d) / "sess", runtime_root=Path(d), keep_latest=1, failed_days=7, verbose=False)
             self.assertTrue(dest.exists())
 
     def test_promote_never_overwrites_existing_pin(self):
@@ -76,6 +76,18 @@ class TestPromoteCalibration(unittest.TestCase):
             self.assertNotEqual(first.resolve(), second.resolve())
             self.assertTrue(first.exists())
             self.assertTrue(second.exists())
+
+    def test_rapid_same_name_promotions_stay_distinct(self):
+        with tempfile.TemporaryDirectory() as d:
+            cal = Path(d) / "cal"
+            src = Path(d) / "a.npz"
+            _write_npz(src)
+            dests = [promote_calibration(src, cal, name="rapid") for _ in range(4)]
+            distinct = {p.resolve() for p in dests}
+            self.assertEqual(len(distinct), 4)
+            for p in dests:
+                self.assertTrue(p.exists())
+                self.assertTrue(library_meta_path(p).exists())
 
     def test_promote_missing_source_raises(self):
         with tempfile.TemporaryDirectory() as d:

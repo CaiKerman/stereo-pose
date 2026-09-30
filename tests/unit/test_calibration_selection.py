@@ -51,6 +51,18 @@ class TestNewestCalibration(unittest.TestCase):
             os.utime(saved_p, (999999, 999999))  # saved is newer
             self.assertEqual(newest_calibration(cal).resolve(), auto_p.resolve())
 
+    def test_auto_beats_newer_legacy_flat_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            cal = Path(d) / "cal"
+            auto = _auto(cal)
+            auto_p = auto / "stereo_0001_000000.npz"
+            legacy_p = cal / "stereo_9999_000000.npz"
+            _write_npz(auto_p, 1)
+            _write_npz(legacy_p, 2)
+            os.utime(auto_p, (1000, 1000))
+            os.utime(legacy_p, (999999, 999999))  # legacy flat file is newer
+            self.assertEqual(newest_calibration(cal).resolve(), auto_p.resolve())
+
     def test_explicit_file_selects_saved_profile(self):
         with tempfile.TemporaryDirectory() as d:
             cal = Path(d) / "cal"

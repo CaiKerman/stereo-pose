@@ -1,4 +1,4 @@
-# Test report — Task 001 (+ review round 1)
+# Test report — Task 001 (+ review rounds 1 & 2)
 
 ## Exact test commands
 
@@ -17,12 +17,12 @@ Note: the `src/` package must be importable for `unittest discover`. Either
 
 ## Results
 
-- Ran: 88 tests
-- Passed: 87
+- Ran: 93 tests
+- Passed: 92
 - Failed: 0
 - Skipped: 1 (`test_rejects_symlink_escape` — symlinks not supported on this
   platform without elevation)
-- Duration: ~1s (pytest), ~0.4s (unittest)
+- Duration: ~1.2s (pytest), ~0.7s (unittest)
 
 ## Environment
 
@@ -44,10 +44,10 @@ Tests run with no webcams, no CUDA, and no model weights.
 | synthetic stereo triangulation | `tests/regression/test_geometry.py` |
 | epipolar error | `tests/regression/test_geometry.py` |
 | reprojection error | `tests/regression/test_geometry.py` |
-| calibration selection (auto/ vs saved/) | `tests/unit/test_calibration_selection.py` |
+| calibration selection (auto/ vs saved/ + auto-vs-legacy precedence) | `tests/unit/test_calibration_selection.py` |
 | calibration metadata + compatibility warnings | `tests/unit/test_calibration_metadata.py` |
-| calibration promote/pin to saved library | `tests/unit/test_promote.py` |
-| cleanup safety boundaries (root guard, auto-only) | `tests/unit/test_cleanup.py` |
+| calibration promote/pin to saved library (incl. collision-proof) | `tests/unit/test_promote.py` |
+| cleanup safety boundaries (mandatory root guard, auto-only, pre-delete mass guard) | `tests/unit/test_cleanup.py` |
 | camera fourcc validation | `tests/unit/test_camera.py` |
 | configuration merge + validation (incl. fourcc/buffer_size/runtime.root) | `tests/unit/test_config.py` |
 | quality accept/reject | `tests/unit/test_quality.py` |

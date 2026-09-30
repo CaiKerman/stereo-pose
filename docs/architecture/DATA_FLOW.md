@@ -83,5 +83,7 @@ runtime/
 └─ captures/                                  # reserved for future captures
 ```
 
-Cleanup (`persistence.cleanup`) only operates inside these managed roots, touches
-only `calibrations/auto/` and the session area, and never deletes `saved/`.
+Cleanup (`persistence.cleanup`) only operates inside these managed roots, requires
+a mandatory trusted runtime root, touches only `calibrations/auto/` and the
+session area, checks deletion candidates against the safety guard before
+deleting, and never deletes `saved/`.

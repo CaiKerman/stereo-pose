@@ -52,31 +52,37 @@ def ensure_managed_location(path, trusted_root: Path, label: str) -> Path:
 def cleanup_project(
     calibration_dir,
     session_dir,
+    runtime_root,
     keep_latest=10,
     failed_days=7,
     verbose=True,
-    runtime_root=None,
 ):
     """Clean only files created by this project in its managed folders.
 
-    ``calibration_dir`` and ``session_dir`` must be inside ``runtime_root`` when
-    it is provided; otherwise a :class:`CleanupSafetyError` is raised before any
-    deletion. Rolling calibrations are kept newest-first under ``auto/``; the
-    ``saved/`` library is never touched.
-    """
-    removed = []
+    ``runtime_root`` is a mandatory trusted managed root: both
+    ``calibration_dir`` and ``session_dir`` must resolve inside it, otherwise a
+    :class:`CleanupSafetyError` is raised before any deletion. Rolling
+    calibrations are kept newest-first under ``auto/``; the ``saved/`` library
+    is never touched.
 
+    Deletion candidates are computed and checked against the mass-deletion
+    safety guard *before* anything is removed.
+    """
+    if not runtime_root:
+        raise CleanupSafetyError(
+            "cleanup requires a trusted runtime_root; refusing unguarded cleanup"
+        )
+    trust = _resolved(runtime_root)
     cal_root = _resolved(calibration_dir)
     sess_root = _resolved(session_dir)
-
-    if runtime_root is not None:
-        trust = _resolved(runtime_root)
-        ensure_managed_location(cal_root, trust, "calibration_dir")
-        ensure_managed_location(sess_root, trust, "session_dir")
+    ensure_managed_location(cal_root, trust, "calibration_dir")
+    ensure_managed_location(sess_root, trust, "session_dir")
 
     auto = auto_dir(cal_root)
     auto.mkdir(parents=True, exist_ok=True)
 
+    # Phase 1: compute every deletion candidate before deleting anything.
+    cal_candidates = []
     cal_files = sorted(
         auto.glob("stereo_*.npz"),
         key=lambda p: p.stat().st_mtime,
@@ -85,31 +91,45 @@ def cleanup_project(
     for p in cal_files[max(1, int(keep_latest)):]:
         if not _is_within(_resolved(p), auto):
             raise CleanupSafetyError(f"refusing to delete {p}: escapes managed auto root {auto}")
-        try:
-            p.unlink()
-            removed.append(str(p))
-        except OSError:
-            pass
+        cal_candidates.append(p)
 
     sess_dir = Path(session_dir)
     sess_dir.mkdir(parents=True, exist_ok=True)
     cutoff = datetime.now() - timedelta(days=float(failed_days))
+    sess_candidates = []
     for p in sess_dir.glob("session_*"):
         if not p.is_dir():
             continue
         if not _is_within(_resolved(p), sess_root):
             raise CleanupSafetyError(f"refusing to delete {p}: escapes managed session root {sess_root}")
         try:
-            if datetime.fromtimestamp(p.stat().st_mtime) < cutoff:
-                shutil.rmtree(p)
-                removed.append(str(p))
+            stale = datetime.fromtimestamp(p.stat().st_mtime) < cutoff
+        except OSError:
+            stale = False
+        if stale:
+            sess_candidates.append(p)
+
+    total = len(cal_candidates) + len(sess_candidates)
+    if total > _MAX_REMOVED_GUARD:
+        raise CleanupSafetyError(
+            f"cleanup would remove {total} items, exceeding safety guard "
+            f"{_MAX_REMOVED_GUARD}; aborting before any deletion"
+        )
+
+    # Phase 2: delete only after the guard has passed.
+    removed = []
+    for p in cal_candidates:
+        try:
+            p.unlink()
+            removed.append(str(p))
         except OSError:
             pass
-
-    if len(removed) > _MAX_REMOVED_GUARD:
-        raise CleanupSafetyError(
-            f"cleanup removed {len(removed)} items, exceeding safety guard {_MAX_REMOVED_GUARD}"
-        )
+    for p in sess_candidates:
+        try:
+            shutil.rmtree(p)
+            removed.append(str(p))
+        except OSError:
+            pass
 
     if verbose:
         print(f"[cleanup] removed {len(removed)} item(s)")

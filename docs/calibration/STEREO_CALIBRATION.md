@@ -89,8 +89,9 @@ synchronized; host grab skew is not sensor exposure timing.
 ## Cleanup
 
 `persistence.cleanup.cleanup_project` keeps the latest N `auto/` calibration
-NPZs and removes abandoned sessions older than a configurable age. It only
-deletes paths whose resolved absolute location is inside a trusted managed
-runtime root, never touches `saved/`, and raises `CleanupSafetyError` instead of
-deleting anything outside the managed boundaries. `saved/` pinned artifacts
-survive regardless of age or count.
+NPZs and removes abandoned sessions older than a configurable age. The trusted
+runtime root is **mandatory**: both `calibration_dir` and `session_dir` must
+resolve inside it, otherwise `CleanupSafetyError` is raised before any deletion.
+Deletion candidates are computed and checked against the mass-deletion safety
+guard before anything is removed, `saved/` is never touched, and `saved/`
+pinned artifacts survive regardless of age or count.

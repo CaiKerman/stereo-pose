@@ -98,10 +98,10 @@ def run(args, cfg):
     if cl.get("enabled", True):
         cleanup_project(
             s["calibration_dir"], cr["session_dir"],
-            cl.get("keep_latest_calibrations", 10),
-            cl.get("delete_failed_sessions_older_days", 7),
-            verbose=True,
             runtime_root=runtime_root,
+            keep_latest=cl.get("keep_latest_calibrations", 10),
+            failed_days=cl.get("delete_failed_sessions_older_days", 7),
+            verbose=True,
         )
 
     device = resolve_device(p["device"])
@@ -221,10 +221,10 @@ def run(args, cfg):
                             if cl.get("enabled", True):
                                 cleanup_project(
                                     s["calibration_dir"], cr["session_dir"],
-                                    cl.get("keep_latest_calibrations", 10),
-                                    cl.get("delete_failed_sessions_older_days", 7),
-                                    verbose=True,
                                     runtime_root=runtime_root,
+                                    keep_latest=cl.get("keep_latest_calibrations", 10),
+                                    failed_days=cl.get("delete_failed_sessions_older_days", 7),
+                                    verbose=True,
                                 )
                         except Exception as e:
                             print(f"[calibration] solve failed: {e}")
@@ -378,10 +378,10 @@ def run(args, cfg):
             elif key in (ord("g"), ord("G")):
                 cleanup_project(
                     s["calibration_dir"], cr["session_dir"],
-                    cl.get("keep_latest_calibrations", 10),
-                    cl.get("delete_failed_sessions_older_days", 7),
-                    verbose=True,
                     runtime_root=runtime_root,
+                    keep_latest=cl.get("keep_latest_calibrations", 10),
+                    failed_days=cl.get("delete_failed_sessions_older_days", 7),
+                    verbose=True,
                 )
             elif key in (ord("p"), ord("P")):
                 if calib_path is not None:

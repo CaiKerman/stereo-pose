@@ -101,3 +101,43 @@
 
 - None. Measurement math is unchanged; the new compatibility checks are
   warn-only and never reject a calibration.
+
+## Review round 2 (PR #1 feedback)
+
+### Modified
+
+- `persistence/cleanup.py` — `runtime_root` is now a required parameter
+  (omission is a `TypeError`, falsy value raises `CleanupSafetyError`), so the
+  containment guard can no longer be bypassed. Deletion candidates are computed
+  and checked against `_MAX_REMOVED_GUARD` *before* anything is removed.
+- `calibration/selection.py` — `newest_calibration` now enforces strict order:
+  explicit file → newest `auto/*.npz` → (only if `auto/` empty) newest legacy
+  root `stereo_*.npz` → legacy `./stereo_calib.npz`. A newer legacy flat file
+  can no longer override managed auto history.
+- `persistence/promote.py` — destination created via exclusive creation
+  (`open(..., "xb")`) with an incrementing counter; sidecar uses
+  `open(..., "x")`. Same-name promotions can no longer overwrite a saved NPZ or
+  its sidecar.
+- `app/runner.py` — three `cleanup_project` call sites pass the now-mandatory
+  `runtime_root`.
+
+### Behavior changes
+
+- Automatic cleanup is impossible without a trusted runtime root.
+- Mass-deletion safety guard fires before any deletion, not after.
+- Auto calibration history always wins over a newer legacy flat file.
+- Promotion never overwrites an existing pinned artifact.
+
+### Numerical behavior changes
+
+- None. These are containment/selection/persistence safety fixes; measurement
+  math is untouched.
+
+### Tests
+
+- Added `test_omitting_runtime_root_refuses_cleanup`,
+  `test_none_runtime_root_refuses_before_deletion`,
+  `test_over_limit_cleanup_aborts_before_deleting_anything`,
+  `test_auto_beats_newer_legacy_flat_file`,
+  `test_rapid_same_name_promotions_stay_distinct`. Suite grew from 88 to 93
+  tests.
