@@ -2,7 +2,7 @@
 
 ## Task 002 — Review round 1
 
-Status: **RESOLVED — pending reviewer re-review**
+Status: **CODE REVIEW ACCEPTED — pending real-hardware validation**
 
 This file is the repository-visible authoritative mirror of actionable review feedback for Task 002.
 
@@ -70,3 +70,27 @@ closed Task 001 round-2 items were dropped with the round-1 refresh.
 - [x] mark this inbox RESOLVED — pending reviewer re-review
 - [x] push to the existing PR #2 (head commit below)
 - [ ] do not merge
+
+
+## Reviewer disposition — round 2
+
+R1-1 was re-reviewed and is accepted.
+
+Verified:
+- direct and reversed_180 candidates are evaluated using stereo epipolar geometry only;
+- nominal square_mm is not used to select correspondence;
+- selected mode is persisted as corner_order_mode;
+- implausible correspondence raises MetricValidationError and the live V path writes no report;
+- deterministic direct/reversed/failure/metric-recovery tests are present;
+- no existing pose-quality thresholds were relaxed.
+
+Non-blocking note:
+- MAX_PLAUSIBLE_MEAN_EPIPOLAR_PX=5.0 is a correspondence-plausibility heuristic, not a measurement acceptance threshold. Current accepted real calibration had ~0.735 px sample mean, so this leaves ample margin. Revisit only if real V captures fail unexpectedly.
+
+Before merge, perform real-hardware acceptance:
+1. press D with upper body continuously visible and capture diagnostic output covering intermittent shoulder loss;
+2. hold the existing 25 mm checkerboard in both views and press V;
+3. preserve the console summary and generated runtime/validation/metric_*.json;
+4. confirm restart/load behavior remains intact.
+
+Do not merge until those two live paths are exercised.
