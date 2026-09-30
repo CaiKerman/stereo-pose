@@ -1,0 +1,152 @@
+# AGENTS.md — Stereo Pose repository agent contract
+
+This file applies to the entire repository. Every coding/implementation agent must read it before making changes.
+
+## 1. Authority and source of truth
+
+Use this precedence order:
+
+1. The owner's latest explicit instruction.
+2. `CURRENT_TASK.md`.
+3. The instruction file referenced by `CURRENT_TASK.md`.
+4. This `AGENTS.md`.
+5. Architecture/protocol/calibration documentation.
+6. Existing implementation.
+
+If two sources conflict, do not silently choose a new convention. Record the conflict in `REVIEW_FOR_OWNERS.md` and preserve the last verified behavior unless the owner explicitly changed it.
+
+## 2. Git workflow
+
+- `main` contains reviewed baseline code only.
+- Never implement directly on `main`.
+- Read `CURRENT_TASK.md` and use exactly the task branch declared there.
+- Keep commits small and reviewable.
+- Push work to the task branch and create/update a pull request into `main`.
+- Do not merge your own PR unless the owner explicitly instructs you to do so.
+- Do not force-push shared reviewed history unless explicitly authorized.
+
+## 3. Required task startup sequence
+
+Before coding:
+
+1. Read this file.
+2. Read `CURRENT_TASK.md`.
+3. Read the referenced instruction.
+4. Inspect the affected source and tests.
+5. Run the existing deterministic test suite if one exists.
+6. Only then modify code.
+
+Do not rely on chat context when the repository contains the relevant decision.
+
+## 4. Numerical and geometry safety
+
+This project is a measurement system. Numerical behavior is part of the product contract.
+
+Before changing stereo geometry, calibration, coordinate transforms, quality rejection, or filtering:
+
+- add or update a regression test;
+- preserve units explicitly;
+- document behavior changes;
+- never change coordinate conventions silently;
+- never describe host-side webcam grab timing as true sensor exposure synchronization.
+
+Known physical constraints:
+
+- ordinary USB webcams may differ in frame rate, buffering, latency, and exposure timing;
+- stereo calibration must use spatially stable calibration targets;
+- current PoC coordinates are rectified-left-camera coordinates;
+- future world coordinates require ground `Z=0` and `+Z` upward;
+- final world X/Y direction is not yet defined.
+
+## 5. Offline-first rule
+
+The application and deterministic tests must not require network access.
+
+- Pose model weights are local files.
+- Do not add automatic GitHub/model downloads.
+- Missing local assets must fail with a clear message.
+
+## 6. Reference implementation
+
+Files under `reference/` are evidence/baseline material.
+
+- Do not "clean up" or silently edit reference code.
+- Formal implementation belongs under the project source tree defined by the current engineering instruction.
+- If a reference bug is discovered: document it, reproduce it in a test if possible, then fix only the formal implementation unless instructed otherwise.
+
+## 7. Runtime artifacts
+
+Generated files must stay under project-managed runtime locations.
+
+Do not commit by default:
+
+- model weights;
+- captured camera frames;
+- generated stereo/world calibration artifacts;
+- logs;
+- caches;
+- temporary sessions.
+
+Cleanup code must never delete outside its explicitly managed runtime roots.
+
+## 8. Data and protocol compatibility
+
+The current `stereo_pose_3d/v1`-style message is a compatibility baseline.
+
+Internal refactors may use typed models, but existing external fields/units must not be silently renamed or reinterpreted. Use adapters when needed.
+
+Keep distinctions between:
+
+- raw measurement;
+- accepted/rejected measurement;
+- filtered measurement;
+- coordinate system;
+- units;
+- timestamps;
+- quality metrics.
+
+## 9. Required completion artifacts
+
+At the end of every task, create or update:
+
+### `CHANGE_SUMMARY.md`
+Include:
+- Added
+- Modified
+- Deleted
+- Behavior changes
+- Numerical behavior changes
+- Protocol/config changes
+- Known issues
+
+### `TEST_REPORT.md`
+Include:
+- exact test commands;
+- passed/failed/skipped counts;
+- environment notes;
+- failures or untested hardware paths.
+
+### `REVIEW_FOR_OWNERS.md`
+Include only decisions or risks that genuinely require owner/architect review.
+Do not fill this with ordinary implementation details.
+
+Also update relevant permanent documentation when behavior changes.
+
+## 10. Review handoff
+
+When implementation is ready:
+
+1. Ensure working tree is clean except intentional untracked runtime files.
+2. Run tests.
+3. Commit and push the task branch.
+4. Open/update a PR to `main`.
+5. Put the PR number/URL and head commit SHA into `REVIEW_FOR_OWNERS.md`.
+6. Stop. Do not merge unless instructed.
+
+The reviewer should be able to review from Git history/diff without receiving a full ZIP.
+
+## 11. Do not over-engineer
+
+Prefer explicit module boundaries, typed data, tests, and stable interfaces.
+
+Do not create speculative abstractions, final UI frameworks, UE architecture, world-axis conventions, multi-person tracking, or integrations unless the current instruction asks for them.
