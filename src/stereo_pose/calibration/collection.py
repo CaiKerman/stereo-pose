@@ -37,14 +37,14 @@ class RuntimeCalibration:
         self.interval = float(runtime_cfg.get("auto_capture_interval_s", 0.7))
         self.min_pairs = int(runtime_cfg.get("min_pairs_to_solve", 12))
         self.target_pairs = int(runtime_cfg.get("target_pairs", 24))
-        self.min_area_ratio = float(runtime_cfg.get("min_board_area_ratio", 0.025))
+        self.min_area_ratio = float(runtime_cfg.get("min_board_area_ratio", 0.012))
         self.diversity_threshold = float(runtime_cfg.get("diversity_threshold", 0.12))
         self.keep_images = bool(runtime_cfg.get("keep_images_after_success", False))
         self.recommended_readiness = float(runtime_cfg.get("recommended_readiness", 75))
 
-        self.stable_dwell_s = float(runtime_cfg.get("stable_dwell_s", 0.55))
-        self.stable_min_frames = int(runtime_cfg.get("stable_min_frames", 4))
-        self.stable_corner_motion_px = float(runtime_cfg.get("stable_corner_motion_px", 2.0))
+        self.stable_dwell_s = float(runtime_cfg.get("stable_dwell_s", 0.30))
+        self.stable_min_frames = int(runtime_cfg.get("stable_min_frames", 3))
+        self.stable_corner_motion_px = float(runtime_cfg.get("stable_corner_motion_px", 5.0))
         self.robust_prune = bool(runtime_cfg.get("robust_prune", True))
         self.prune_min_epipolar_px = float(runtime_cfg.get("prune_min_epipolar_px", 0.8))
         self.prune_max_epipolar_px = float(runtime_cfg.get("prune_max_epipolar_px", 2.5))
@@ -233,19 +233,22 @@ class RuntimeCalibration:
         stable, motion_px, stable_dwell = self._update_stability(now, dl, dr)
         captured = False
 
-        if valid and good_area and stable:
+        # SPACE is a true manual override: the operator decides whether the
+        # checkerboard is physically still enough. We still require complete
+        # detection in both cameras and a minimum useful board size.
+        if force_capture and valid and good_area:
+            self._save(frame_l, frame_r, dl, dr, motion_px)
+            captured = True
+        elif valid and good_area and stable:
             time_ok = (now - self.last_capture_t) >= self.interval
             diverse = self._is_diverse(dl, dr)
-            if force_capture:
-                self._save(frame_l, frame_r, dl, dr, motion_px)
-                captured = True
-            elif self.auto_capture and time_ok and diverse:
+            if self.auto_capture and time_ok and diverse:
                 self._save(frame_l, frame_r, dl, dr, motion_px)
                 captured = True
         elif force_capture:
             print(
-                "[calibration] manual capture rejected: board must be visible, large enough, "
-                "and stable in BOTH cameras"
+                "[calibration] manual capture rejected: board must be fully visible "
+                "and large enough in BOTH cameras; automatic stillness is NOT required"
             )
 
         self.current = {
@@ -254,6 +257,8 @@ class RuntimeCalibration:
             "stable": bool(stable),
             "stability_motion_px": motion_px,
             "stable_dwell_s": float(stable_dwell),
+            "area_ratio_left": None if dl is None else float(dl["area_ratio"]),
+            "area_ratio_right": None if dr is None else float(dr["area_ratio"]),
             "captured": captured,
         }
         return self.current
@@ -460,6 +465,14 @@ class RuntimeCalibration:
         ready = self.readiness()
         motion = cur.get("stability_motion_px")
         motion_text = "n/a" if motion is None else f"{motion:.2f}px"
+        area_l = cur.get("area_ratio_left")
+        area_r = cur.get("area_ratio_right")
+        area_text = (
+            "n/a"
+            if area_l is None or area_r is None
+            else f"L={area_l * 100:.1f}% R={area_r * 100:.1f}%"
+        )
+        manual_ready = bool(cur.get("valid") and cur.get("good_area"))
         host_skew = None if pair_timing is None else pair_timing.get("host_grab_skew_ms")
         skew_text = "n/a" if host_skew is None else f"{host_skew:.2f}ms"
 
@@ -475,10 +488,11 @@ class RuntimeCalibration:
         lines = [
             "CALIBRATION MODE - STATIC BOARD CAPTURE",
             f"pairs: {len(self.samples)}/{self.target_pairs}   readiness*: {ready:.0f}/100",
-            f"board: {board_state}   corner motion: {motion_text}",
+            f"board: {board_state}   area: {area_text}",
+            f"corner motion: {motion_text}   SPACE manual={'READY' if manual_ready else 'WAIT'}",
             f"host grab skew: {skew_text}  (NOT sensor exposure skew)",
             "AUTO capture ON" if self.auto_capture else "AUTO capture OFF",
-            "SPACE=manual(still required)   R=solve   X=discard   C=return",
+            "SPACE=FORCE CAPTURE(size+visibility only)   R=solve   X=discard   C=return",
             "* readiness is heuristic; final metrics: Stereo RMS + epipolar error",
         ]
 
