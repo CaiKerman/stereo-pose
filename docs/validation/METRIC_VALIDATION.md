@@ -44,10 +44,30 @@ counter suffix is appended; reports are never overwritten.
 | `epipolar` / `reprojection` | mean/max error over reconstructed corners (px) |
 | `depth_range_mm` | min / max / span of reconstructed corner depth (mm) |
 | `calibration_file` | NPZ used for triangulation |
+| `corner_order_mode` | selected correspondence normalization: `direct` or `reversed_180` |
 | `timestamp` | capture time (ISO) |
 
 `schema` is `stereo_pose_3d/metric_validation/v1` and `sample_mode` is
 `single_frame` — a single frame is reported, never silently aggregated.
+
+## Corner correspondence normalization
+
+`cv2.findChessboardCornersSB` can report the corners of a rectangular board in
+either of two 180-degree-related orderings, so the left and right cameras may
+disagree on which corner is "first". Pairing the two corner lists positionally
+would then create wrong correspondences and spuriously inflate the metric error.
+
+Before triangulation the pipeline therefore evaluates the two physically plausible
+orderings — `direct` (pair `left[k]` with `right[k]`) and `reversed_180` (pair
+`left[k]` with `right[-1-k]`) — and selects the one with the best aggregate
+rectified epipolar geometry. The expected `square_mm` is never consulted for this
+decision, so the validation is not circular. The chosen mode is recorded in the
+report as `corner_order_mode`.
+
+If neither ordering reconstructs the board with full corner coverage and
+plausible epipolar error, the capture is rejected with a validation error and no
+metric report is written — the failure is reported instead of emitting
+misleading metric statistics.
 
 ## Reading the results
 

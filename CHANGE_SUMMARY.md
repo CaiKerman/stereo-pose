@@ -67,6 +67,49 @@
   weights); the `D`/`V` hotkeys and report files were exercised via the
   deterministic tests and pure functions only. See `TEST_REPORT.md`.
 
+## Review round 1 (PR #2 feedback)
+
+### Added
+
+- `validation/metrics.py` — `normalize_correspondence` (correspondence
+  normalization choosing between `direct` and `reversed_180` orderings using
+  aggregate rectified epipolar geometry), `_candidate_fit`, and
+  `MetricValidationError`. The `MetricValidationResult` report gains a
+  `corner_order_mode` field.
+- Tests in `tests/unit/test_metric_validation.py`
+  (`TestCorrespondenceNormalization`): direct selects direct, reversed right is
+  corrected, implausible fails cleanly, and reversed input still recovers the
+  expected 25 mm grid. `test_validation_report.py` now asserts
+  `corner_order_mode` round-trips and is a required key.
+
+### Modified
+
+- `validation/metrics.py` — `compute_metric_validation` normalizes corner
+  correspondence before triangulation and raises `MetricValidationError` when
+  neither ordering is geometrically plausible.
+- `validation/__init__.py` — exports `normalize_correspondence`,
+  `MetricValidationError`, `MAX_PLAUSIBLE_MEAN_EPIPOLAR_PX`.
+- `app/runner.py` — the `V` path catches `MetricValidationError` and reports
+  failure instead of writing a misleading report.
+- `docs/validation/METRIC_VALIDATION.md` — documents correspondence
+  normalization, the `corner_order_mode` field, and the failure behavior.
+
+### Behavior changes
+
+- A checkerboard whose two detected corner orderings disagree by 180 degrees is
+  now corrected to a consistent matching before triangulation; previously the
+  positional pairing could create wrong correspondences and inflate the metric
+  error.
+- A capture whose correspondence is implausible under both orderings is rejected
+  (validation failure) rather than emitting misleading 25 mm statistics.
+
+### Numerical behavior changes
+
+- None for the measured metrics on an already-consistent board. The new
+  normalization is evidence-based (epipolar geometry) and records `corner_order_mode`;
+  it never changes the spacing/plane/scale math. No v1.2 output or measurement
+  threshold is affected.
+
 ---
 
 # Change summary — Task 001

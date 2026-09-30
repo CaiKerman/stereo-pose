@@ -21,6 +21,18 @@ import numpy as np
 SCHEMA = "stereo_pose_3d/metric_validation/v1"
 SAMPLE_MODE = "single_frame"
 
+# A rectified-stereo correspondence is geometrically plausible only when every
+# corner triangulates and the mean vertical-disparity (epipolar) error stays
+# under this many pixels. A wrong 180-degree pairing matches corners from
+# different board rows, so its vertical disparity is on the order of a board row
+# (tens of pixels). This threshold gates correspondence only and is not a
+# measurement threshold.
+MAX_PLAUSIBLE_MEAN_EPIPOLAR_PX = 5.0
+
+
+class MetricValidationError(RuntimeError):
+    """Raised when a validation capture cannot produce trustworthy metrics."""
+
 
 @dataclass
 class MetricValidationResult:
@@ -42,6 +54,7 @@ class MetricValidationResult:
     epipolar: Dict[str, Optional[float]]
     reprojection: Dict[str, Optional[float]]
     depth_range_mm: Dict[str, Optional[float]]
+    corner_order_mode: Optional[str]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -60,6 +73,7 @@ class MetricValidationResult:
             "epipolar": self.epipolar,
             "reprojection": self.reprojection,
             "depth_range_mm": self.depth_range_mm,
+            "corner_order_mode": self.corner_order_mode,
         }
 
 
@@ -83,6 +97,67 @@ def triangulate_corners(triangulator, corners_left, corners_right) -> List[Optio
     for pl, pr in zip(corners_left, corners_right):
         out.append(triangulator.triangulate_with_quality(pl, pr))
     return out
+
+
+def _candidate_fit(triangulator, corners_left, corners_right):
+    """Return ``(valid, total, mean_epipolar_px)`` for one right-camera ordering."""
+    total = min(len(corners_left), len(corners_right))
+    epi: List[float] = []
+    valid = 0
+    for pl, pr in zip(corners_left, corners_right):
+        q = triangulator.triangulate_with_quality(pl, pr)
+        if q is None:
+            continue
+        valid += 1
+        epi.append(float(q["epipolar_error_px"]))
+    mean = float(np.mean(epi)) if epi else float("inf")
+    return valid, total, mean
+
+
+def normalize_correspondence(triangulator, corners_left, corners_right):
+    """Choose a right-camera corner ordering consistent with the left camera.
+
+    ``cv2.findChessboardCornersSB`` can report a rectangular board's corners in
+    either of two 180-degree-related orderings. Pairing them positionally would
+    then create wrong correspondences and spuriously inflate the metric error.
+
+    Two orderings are scored with stereo-geometry evidence only (mean rectified
+    epipolar error; the expected ``square_mm`` is never consulted):
+
+    * ``direct``       — pair ``left[k]`` with ``right[k]``;
+    * ``reversed_180`` — pair ``left[k]`` with ``right[-1-k]`` (180 degree).
+
+    Returns ``(ordered_right_corners, mode)`` for the plausible ordering with the
+    lowest aggregate epipolar error, or ``None`` when neither ordering is
+    geometrically plausible.
+    """
+    if len(corners_left) == 0 or len(corners_right) == 0:
+        return None
+
+    reversed_right = corners_right[::-1]
+    v_direct, t_direct, e_direct = _candidate_fit(
+        triangulator, corners_left, corners_right
+    )
+    v_rev, t_rev, e_rev = _candidate_fit(triangulator, corners_left, reversed_right)
+
+    best_mode = None
+    best_error = float("inf")
+    for mode, valid, total, err in (
+        ("direct", v_direct, t_direct, e_direct),
+        ("reversed_180", v_rev, t_rev, e_rev),
+    ):
+        # Full triangulation is required: a correct correspondence triangulates
+        # every detected corner; a failed corner signals a broken board/rig.
+        if valid != total or err > MAX_PLAUSIBLE_MEAN_EPIPOLAR_PX:
+            continue
+        if err < best_error:  # ties keep the earlier candidate (direct)
+            best_error = err
+            best_mode = mode
+
+    if best_mode is None:
+        return None
+    ordered = corners_right if best_mode == "direct" else reversed_right
+    return ordered, best_mode
 
 
 def _edge_stats(edges: List[float], expected: float) -> Dict[str, Any]:
@@ -140,6 +215,7 @@ def compute_metrics_from_triangulations(
     calibration_file: Optional[str] = None,
     timestamp: Optional[str] = None,
     sample_mode: str = SAMPLE_MODE,
+    corner_order_mode: Optional[str] = None,
 ) -> MetricValidationResult:
     """Compute metric-validation metrics from a per-corner triangulation list.
 
@@ -208,6 +284,7 @@ def compute_metrics_from_triangulations(
         epipolar=_mean_max(epi_errors),
         reprojection=_mean_max(reproj_errors),
         depth_range_mm=depth_range,
+        corner_order_mode=corner_order_mode,
     )
 
 
@@ -222,8 +299,21 @@ def compute_metric_validation(
     calibration_file: Optional[str] = None,
     timestamp: Optional[str] = None,
 ) -> MetricValidationResult:
-    """Triangulate matched checkerboard corners and compute validation metrics."""
-    triangulations = triangulate_corners(triangulator, corner_det_l, corner_det_r)
+    """Triangulate matched checkerboard corners and compute validation metrics.
+
+    Correspondence between the two detected grids is normalized first (the two
+    cameras may report 180-degree-related orderings). Raises
+    :class:`MetricValidationError` when neither ordering is geometrically
+    plausible.
+    """
+    decision = normalize_correspondence(triangulator, corner_det_l, corner_det_r)
+    if decision is None:
+        raise MetricValidationError(
+            "checkerboard corner correspondence is not geometrically plausible "
+            "under either the direct or 180-degree ordering"
+        )
+    ordered_right, mode = decision
+    triangulations = triangulate_corners(triangulator, corner_det_l, ordered_right)
     return compute_metrics_from_triangulations(
         triangulations,
         board_cols=board_cols,
@@ -231,6 +321,7 @@ def compute_metric_validation(
         square_mm=square_mm,
         calibration_file=calibration_file,
         timestamp=timestamp,
+        corner_order_mode=mode,
     )
 
 

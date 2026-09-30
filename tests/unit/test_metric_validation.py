@@ -10,8 +10,10 @@ import numpy as np
 
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.validation import (
+    MetricValidationError,
     compute_metric_validation,
     compute_metrics_from_triangulations,
+    normalize_correspondence,
 )
 
 COLS = 9
@@ -135,6 +137,45 @@ class TestNoisyObservations(_Rig):
         self.assertTrue(np.isfinite(res.plane["rms_residual_mm"]))
         self.assertTrue(np.isfinite(res.scale_error_percent))
         self.assertAlmostEqual(res.horizontal["mean"], SQUARE, delta=1.0)
+
+
+class TestCorrespondenceNormalization(_Rig):
+    def _board(self, z=1500.0):
+        pts = grid_3d(COLS, ROWS, SQUARE) + np.array([0.0, 0.0, z])
+        return self.project_board(pts)
+
+    def test_direct_ordering_selects_direct(self):
+        pl, pr = self._board()
+        ordered, mode = normalize_correspondence(self.tri, pl, pr)
+        self.assertEqual(mode, "direct")
+        np.testing.assert_allclose(ordered, pr)
+
+    def test_reversed_right_ordering_is_corrected(self):
+        pl, pr = self._board()
+        ordered, mode = normalize_correspondence(self.tri, pl, pr[::-1])
+        self.assertEqual(mode, "reversed_180")
+        np.testing.assert_allclose(ordered, pr)
+
+    def test_implausible_correspondence_fails_cleanly(self):
+        pl, pr = self._board()
+        # A row scramble breaks BOTH the direct and 180-degree pairings.
+        pr_scrambled = np.roll(pr.reshape(ROWS, COLS, 2), 1, axis=0).reshape(-1, 2)
+        self.assertIsNone(normalize_correspondence(self.tri, pl, pr_scrambled))
+        with self.assertRaises(MetricValidationError):
+            compute_metric_validation(
+                self.tri, pl, pr_scrambled,
+                board_cols=COLS, board_rows=ROWS, square_mm=SQUARE,
+            )
+
+    def test_reversed_right_recovers_expected_grid_metric(self):
+        pl, pr = self._board()
+        res = compute_metric_validation(
+            self.tri, pl, pr[::-1],
+            board_cols=COLS, board_rows=ROWS, square_mm=SQUARE,
+        )
+        self.assertEqual(res.corner_order_mode, "reversed_180")
+        self.assertAlmostEqual(res.combined_mean_spacing_mm, SQUARE, delta=0.5)
+        self.assertAlmostEqual(res.scale_error_percent, 0.0, delta=0.5)
 
 
 class TestMetricsMath(unittest.TestCase):

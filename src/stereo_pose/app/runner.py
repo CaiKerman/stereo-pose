@@ -28,6 +28,7 @@ from stereo_pose.persistence import cleanup_project, promote_calibration
 from stereo_pose.pose import PoseEstimator, resolve_device
 from stereo_pose.quality import TemporalSpeedGate, aggregate_bucket, classify_joint
 from stereo_pose.validation import (
+    MetricValidationError,
     compute_metric_validation,
     detect_checkerboard,
     render_summary,
@@ -101,16 +102,20 @@ def _run_metric_validation(triangulator, frame_l, frame_r, stereo_cfg, runtime_r
         )
         return None
 
-    result = compute_metric_validation(
-        triangulator,
-        corner_l,
-        corner_r,
-        board_cols=cols,
-        board_rows=rows,
-        square_mm=square,
-        calibration_file=str(calib_path) if calib_path else None,
-        timestamp=timestamp_now(),
-    )
+    try:
+        result = compute_metric_validation(
+            triangulator,
+            corner_l,
+            corner_r,
+            board_cols=cols,
+            board_rows=rows,
+            square_mm=square,
+            calibration_file=str(calib_path) if calib_path else None,
+            timestamp=timestamp_now(),
+        )
+    except MetricValidationError as e:
+        print(f"[validation] failed: {e}")
+        return None
     saved = save_validation_report(result.to_dict(), runtime_root)
     print(render_summary(result))
     print(f"[validation] saved report -> {saved}")

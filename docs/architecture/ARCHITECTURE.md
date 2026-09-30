@@ -21,7 +21,7 @@ Each subsystem is a Python subpackage under `src/stereo_pose/`:
 | `geometry/` | Rectified triangulation + error metrics | `StereoTriangulator` |
 | `quality/` | Measurement quality score, accept/reject gates, and per-joint rejection classification | `evaluate_measurement`, `heuristic_quality_score`, `TemporalSpeedGate`, `classify_joint`, `aggregate_bucket` |
 | `filtering/` | One Euro temporal smoothing | `OneEuroVectorFilter`, `JointSmoother` |
-| `validation/` | Checkerboard 3D metric validation + JSON report persistence | `compute_metric_validation`, `compute_metrics_from_triangulations`, `save_validation_report` |
+| `validation/` | Checkerboard 3D metric validation + JSON report persistence | `compute_metric_validation`, `normalize_correspondence`, `compute_metrics_from_triangulations`, `save_validation_report` |
 | `coordinates/` | Rigid-transform math scaffold | `RigidTransform` |
 | `outputs/` | Publishers and `stereo_pose_3d/v1.2` adapter | `build_publisher`, `to_v1_message` |
 | `diagnostics/` | Structured logging, offline doctor, per-joint summary formatter | `configure_logging`, `doctor.main`, `format_diagnostic_summary` |

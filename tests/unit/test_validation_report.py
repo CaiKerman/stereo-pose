@@ -35,6 +35,7 @@ def _sample_result_dict():
         tris, board_cols=9, board_rows=6, square_mm=25.0,
         calibration_file="runtime/calibrations/auto/stereo_x.npz",
         timestamp="2026-09-30T12:00:00",
+        corner_order_mode="direct",
     )
     return res.to_dict()
 
@@ -51,12 +52,14 @@ class TestSerialization(unittest.TestCase):
         self.assertAlmostEqual(d2["scale_error_percent"], d["scale_error_percent"])
         self.assertEqual(d2["calibration_file"], d["calibration_file"])
         self.assertEqual(d2["timestamp"], d["timestamp"])
+        self.assertEqual(d2["corner_order_mode"], "direct")
 
     def test_has_required_metric_keys(self):
         d = _sample_result_dict()
         for key in ("expected_spacing_mm", "corners", "horizontal", "vertical",
                     "combined_mean_spacing_mm", "scale_error_percent", "plane",
-                    "epipolar", "reprojection", "depth_range_mm"):
+                    "epipolar", "reprojection", "depth_range_mm",
+                    "corner_order_mode"):
             self.assertIn(key, d)
 
 

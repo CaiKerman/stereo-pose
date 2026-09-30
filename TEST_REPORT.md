@@ -22,12 +22,12 @@ source-path bootstrap and cannot import `stereo_pose`.
 
 ## Results
 
-- Ran: 129 tests
-- Passed: 128
+- Ran: 133 tests
+- Passed: 132
 - Failed: 0
 - Skipped: 1 (`test_rejects_symlink_escape` — symlinks not supported on this
   platform without elevation)
-- Duration: ~1.2s (pytest), ~0.6s (unittest)
+- Duration: ~3.1s (pytest), ~0.7s (unittest)
 
 New in Task 002 (33 tests):
 
@@ -39,6 +39,14 @@ New in Task 002 (33 tests):
 - `tests/unit/test_diagnostics_render.py` — diagnostic summary + aggregate text.
 - `tests/unit/test_validation_report.py` — JSON round-trip and managed-root
   path containment.
+
+Added in review round 1 (4 tests, `tests/unit/test_metric_validation.py`,
+`TestCorrespondenceNormalization`):
+
+- `test_direct_ordering_selects_direct`
+- `test_reversed_right_ordering_is_corrected`
+- `test_implausible_correspondence_fails_cleanly`
+- `test_reversed_right_recovers_expected_grid_metric`
 
 ## Environment
 
@@ -66,6 +74,7 @@ Tests run with no webcams, no CUDA, and no model weights.
 | diagnostics do not change acceptance/rejection | `test_joint_rejection.py::TestNoBehaviourChange` |
 | validation report serialization round-trips | `test_validation_report.py::TestSerialization` |
 | output path stays inside managed validation root | `test_validation_report.py::TestReportPersistence` |
+| correspondence normalization (direct / reversed_180 / implausible) | `test_metric_validation.py::TestCorrespondenceNormalization` |
 
 ## Untested hardware/physical paths
 
