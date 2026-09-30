@@ -64,15 +64,20 @@ def run_doctor(cfg) -> dict:
     cal_dir = Path(cfg["stereo"]["calibration_dir"])
     log_dir = Path(cfg["runtime"].get("log_dir", "runtime/logs"))
 
-    if cal_dir.exists():
-        cal_files = sorted(cal_dir.glob("stereo_*.npz"))
-        cal_status = {
-            "exists": True,
-            "versioned_calibrations": len(cal_files),
-            "latest": str(cal_files[-1]) if cal_files else None,
-        }
-    else:
-        cal_status = {"exists": False, "versioned_calibrations": 0, "latest": None}
+    from stereo_pose.persistence import auto_dir, saved_dir
+
+    auto_files = sorted(auto_dir(cal_dir).glob("stereo_*.npz")) if cal_dir.exists() else []
+    saved_files = sorted(saved_dir(cal_dir).glob("*.npz")) if cal_dir.exists() else []
+    legacy_files = sorted(cal_dir.glob("stereo_*.npz")) if cal_dir.exists() else []
+    all_files = sorted(set(auto_files) | set(saved_files) | set(legacy_files), key=lambda p: p.stat().st_mtime)
+
+    cal_status = {
+        "exists": cal_dir.exists(),
+        "versioned_calibrations": len(auto_files),
+        "saved_calibrations": len(saved_files),
+        "legacy_flat_calibrations": len(legacy_files),
+        "latest": str(all_files[-1]) if all_files else None,
+    }
 
     config_status = "valid"
     try:
@@ -119,7 +124,10 @@ def render_doctor(info: dict) -> str:
                  f"({'present' if info['pose_model']['exists'] else 'MISSING'})")
     cd = info["calibration_dir"]
     if cd["exists"]:
-        lines.append(f"  calibration dir   : present ({cd['versioned_calibrations']} versioned calibration(s))")
+        lines.append(
+            f"  calibration dir   : present (auto={cd['versioned_calibrations']}, "
+            f"saved={cd['saved_calibrations']}, legacy={cd['legacy_flat_calibrations']})"
+        )
     else:
         lines.append("  calibration dir   : absent (will be created) -> no 3D output until calibration")
     lines.append(f"  config            : {info['config_status']}")

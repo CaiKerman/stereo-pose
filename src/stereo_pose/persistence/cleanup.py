@@ -1,29 +1,90 @@
 """Persistence / artifact management: safe cleanup of runtime artifacts.
 
-Cleanup operates ONLY inside project-managed runtime roots:
-``<calibration_dir>/stereo_*.npz`` and ``<session_dir>/session_*``. It never
-recurses into or deletes arbitrary user-provided locations.
+Cleanup only ever operates inside explicitly managed runtime roots:
+
+* ``<calibration_dir>/auto/stereo_*.npz`` — rolling calibrations (keep latest N);
+* ``<session_dir>/session_*`` — abandoned calibration capture sessions.
+
+It never recurses into or deletes arbitrary user-provided locations, and it
+never touches the user-preserved ``saved/`` calibration library.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from stereo_pose.persistence.paths import auto_dir
 
-def cleanup_project(calibration_dir, session_dir, keep_latest=10, failed_days=7, verbose=True):
-    """Clean only files created by this project in its managed folders."""
+_MAX_REMOVED_GUARD = 10_000
+
+
+class CleanupSafetyError(RuntimeError):
+    """Raised when a cleanup target falls outside the trusted runtime root."""
+
+
+def _resolved(path) -> Path:
+    """Resolve to an absolute, normalised path (``resolve(strict=False)``)."""
+    return Path(os.path.abspath(os.path.expanduser(str(Path(path).resolve(strict=False)))))
+
+
+def _is_within(child: Path, root: Path) -> bool:
+    """True if ``child`` is equal to or a strictly contained descendant of ``root``."""
+    return child == root or child.is_relative_to(root)
+
+
+def ensure_managed_location(path, trusted_root: Path, label: str) -> Path:
+    """Return ``path`` resolved, raising :class:`CleanupSafetyError` if it is not
+    inside ``trusted_root``. This is the managed-root containment guard: nothing
+    outside the trusted runtime root may be a cleanup operand.
+    """
+    root = _resolved(trusted_root)
+    resolved = _resolved(path)
+    if not _is_within(resolved, root):
+        raise CleanupSafetyError(
+            f"{label} {resolved} is outside the trusted runtime root {root}; refusing to clean it"
+        )
+    return resolved
+
+
+def cleanup_project(
+    calibration_dir,
+    session_dir,
+    keep_latest=10,
+    failed_days=7,
+    verbose=True,
+    runtime_root=None,
+):
+    """Clean only files created by this project in its managed folders.
+
+    ``calibration_dir`` and ``session_dir`` must be inside ``runtime_root`` when
+    it is provided; otherwise a :class:`CleanupSafetyError` is raised before any
+    deletion. Rolling calibrations are kept newest-first under ``auto/``; the
+    ``saved/`` library is never touched.
+    """
     removed = []
 
-    cal_dir = Path(calibration_dir)
-    cal_dir.mkdir(parents=True, exist_ok=True)
+    cal_root = _resolved(calibration_dir)
+    sess_root = _resolved(session_dir)
+
+    if runtime_root is not None:
+        trust = _resolved(runtime_root)
+        ensure_managed_location(cal_root, trust, "calibration_dir")
+        ensure_managed_location(sess_root, trust, "session_dir")
+
+    auto = auto_dir(cal_root)
+    auto.mkdir(parents=True, exist_ok=True)
+
     cal_files = sorted(
-        cal_dir.glob("stereo_*.npz"),
+        auto.glob("stereo_*.npz"),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     for p in cal_files[max(1, int(keep_latest)):]:
+        if not _is_within(_resolved(p), auto):
+            raise CleanupSafetyError(f"refusing to delete {p}: escapes managed auto root {auto}")
         try:
             p.unlink()
             removed.append(str(p))
@@ -36,12 +97,19 @@ def cleanup_project(calibration_dir, session_dir, keep_latest=10, failed_days=7,
     for p in sess_dir.glob("session_*"):
         if not p.is_dir():
             continue
+        if not _is_within(_resolved(p), sess_root):
+            raise CleanupSafetyError(f"refusing to delete {p}: escapes managed session root {sess_root}")
         try:
             if datetime.fromtimestamp(p.stat().st_mtime) < cutoff:
                 shutil.rmtree(p)
                 removed.append(str(p))
         except OSError:
             pass
+
+    if len(removed) > _MAX_REMOVED_GUARD:
+        raise CleanupSafetyError(
+            f"cleanup removed {len(removed)} items, exceeding safety guard {_MAX_REMOVED_GUARD}"
+        )
 
     if verbose:
         print(f"[cleanup] removed {len(removed)} item(s)")

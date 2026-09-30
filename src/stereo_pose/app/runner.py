@@ -14,7 +14,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from stereo_pose.calibration import RuntimeCalibration, newest_calibration
+from stereo_pose.calibration import RuntimeCalibration, newest_calibration, validate_calibration_compatibility
 from stereo_pose.capture.camera import open_camera, read_stereo_pair
 from stereo_pose.config import load_config
 from stereo_pose.filtering import JointSmoother
@@ -23,7 +23,7 @@ from stereo_pose.joints import JOINT_INDEX, resolve_joints
 from stereo_pose.models import FilteredJoint3D, FrameTiming, JointQuality, PoseFrame
 from stereo_pose.outputs import build_publisher
 from stereo_pose.outputs.v1_message import to_v1_message
-from stereo_pose.persistence.cleanup import cleanup_project
+from stereo_pose.persistence import cleanup_project, promote_calibration
 from stereo_pose.pose import PoseEstimator, resolve_device
 from stereo_pose.quality import TemporalSpeedGate, heuristic_quality_score
 
@@ -45,6 +45,34 @@ def overlay_status(img, lines):
     return img
 
 
+def _capture_image_size(left, right, requested):
+    """Return the actual capture resolution, falling back to the requested size."""
+    def _size(cap):
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        return (w, h) if w > 0 and h > 0 else None
+    return _size(left) or _size(right) or (int(requested[0]), int(requested[1]))
+
+
+def _actual_fps(cap):
+    try:
+        v = cap.get(cv2.CAP_PROP_FPS)
+        return float(v) if v and v > 0 else None
+    except Exception:
+        return None
+
+
+def _report_calibration_compatibility(calib_path, active_size, board, fps=None):
+    """Warn (never silently accept) when a calibration's recorded image size,
+    board geometry, or FPS do not match the active capture / configuration."""
+    try:
+        warnings = validate_calibration_compatibility(calib_path, active_size, board, fps)
+        for w in warnings:
+            print(f"[warning] {w}")
+    except Exception as e:  # noqa: BLE001
+        print(f"[warning] could not load calibration metadata for {calib_path}: {e}")
+
+
 def run(args, cfg):
     c = cfg["camera"]
     p = cfg["pose"]
@@ -54,6 +82,7 @@ def run(args, cfg):
     qcfg = cfg["quality"]
     scfg = cfg["smoothing"]
     o = cfg["output"]
+    r = cfg["runtime"]
 
     if args.left_cam is not None:
         c["left"] = args.left_cam
@@ -64,12 +93,15 @@ def run(args, cfg):
     if args.model is not None:
         p["model"] = args.model
 
+    runtime_root = r.get("root")
+
     if cl.get("enabled", True):
         cleanup_project(
             s["calibration_dir"], cr["session_dir"],
             cl.get("keep_latest_calibrations", 10),
             cl.get("delete_failed_sessions_older_days", 7),
             verbose=True,
+            runtime_root=runtime_root,
         )
 
     device = resolve_device(p["device"])
@@ -85,11 +117,28 @@ def run(args, cfg):
         print(f"[warning] {e}")
         print("[warning] 3D output disabled until you create a calibration with C -> R.")
 
-    left = open_camera(c["left"], c["width"], c["height"], c["fps"], c["backend"])
-    right = open_camera(c["right"], c["width"], c["height"], c["fps"], c["backend"])
+    fourcc = c.get("fourcc", "MJPG")
+    buffer_size = c.get("buffer_size", 1)
+    left = open_camera(c["left"], c["width"], c["height"], c["fps"], c["backend"], fourcc=fourcc, buffer_size=buffer_size)
+    right = open_camera(c["right"], c["width"], c["height"], c["fps"], c["backend"], fourcc=fourcc, buffer_size=buffer_size)
     estimator = PoseEstimator(p["model"], device, p["detection_confidence"])
     publisher = build_publisher(o)
     calibrator = RuntimeCalibration(s, cr)
+
+    active_size = _capture_image_size(left, right, (c["width"], c["height"]))
+    calibrator.set_camera_context(
+        left_index=c["left"],
+        right_index=c["right"],
+        backend=c["backend"],
+        requested_size=(int(c["width"]), int(c["height"])),
+        requested_fps=float(c["fps"]),
+        actual_fps=_actual_fps(left),
+    )
+    if calib_path is not None:
+        _report_calibration_compatibility(
+            calib_path, active_size, (s["board_cols"], s["board_rows"]),
+            fps=float(c.get("fps")) if c.get("fps") else None,
+        )
 
     smoother = JointSmoother(
         enabled=scfg.get("enabled", True),
@@ -110,7 +159,7 @@ def run(args, cfg):
         "Pairing=grab both -> retrieve both. Host skew is diagnostic only; "
         "commodity webcam exposure timing is not hardware-synchronised."
     )
-    print("Hotkeys: C=calibration | F=smoothing on/off | G=cleanup | Q/ESC=quit")
+    print("Hotkeys: C=calibration | F=smoothing on/off | G=cleanup | P=pin calib | Q/ESC=quit")
     print("Calibration: wait for STABLE | SPACE=manual(still required) | R=solve | X=discard | C=return\n")
 
     frame_index = 0
@@ -147,6 +196,11 @@ def run(args, cfg):
                             f"{len(calibrator.samples)}/{calibrator.min_pairs}"
                         )
                     else:
+                        if calibrator.readiness() < calibrator.recommended_readiness:
+                            print(
+                                f"[calibration] warning: readiness={calibrator.readiness():.0f}/100 "
+                                f"(< recommended {calibrator.recommended_readiness:.0f}); solving anyway"
+                            )
                         try:
                             result = calibrator.solve()
                             triangulator = StereoTriangulator(result["path"])
@@ -160,12 +214,17 @@ def run(args, cfg):
                                 f"sample epipolar mean/max={result['sample_epipolar_mean_px']:.3f}/"
                                 f"{result['sample_epipolar_max_px']:.3f}px"
                             )
+                            _report_calibration_compatibility(
+                                calib_path, active_size, (s["board_cols"], s["board_rows"]),
+                                fps=float(c.get("fps")) if c.get("fps") else None,
+                            )
                             if cl.get("enabled", True):
                                 cleanup_project(
                                     s["calibration_dir"], cr["session_dir"],
                                     cl.get("keep_latest_calibrations", 10),
                                     cl.get("delete_failed_sessions_older_days", 7),
                                     verbose=True,
+                                    runtime_root=runtime_root,
                                 )
                         except Exception as e:
                             print(f"[calibration] solve failed: {e}")
@@ -304,7 +363,7 @@ def run(args, cfg):
                 f"Stereo RMS={rms} | epi={epi_txt} | reproj={rep_txt}",
                 f"host grab skew={skew_txt} (not exposure skew) | smoothing={'ON' if smoother.enabled else 'OFF'}",
                 f"OneEuro min_cutoff={smoother.min_cutoff:g} beta={smoother.beta:g} d_cutoff={smoother.d_cutoff:g}",
-                "C=calibrate   F=filter on/off   G=cleanup   Q/ESC=quit",
+                "C=calibrate   F=filter on/off   G=cleanup   P=pin calib   Q/ESC=quit",
             ])
             cv2.imshow("Stereo Pose 3D", canvas)
             key = cv2.waitKey(1) & 0xFF
@@ -322,7 +381,17 @@ def run(args, cfg):
                     cl.get("keep_latest_calibrations", 10),
                     cl.get("delete_failed_sessions_older_days", 7),
                     verbose=True,
+                    runtime_root=runtime_root,
                 )
+            elif key in (ord("p"), ord("P")):
+                if calib_path is not None:
+                    try:
+                        saved = promote_calibration(calib_path, s["calibration_dir"], source="promoted")
+                        print(f"[calibration] pinned current calibration -> {saved}")
+                    except Exception as e:
+                        print(f"[calibration] pin failed: {e}")
+                else:
+                    print("[calibration] no active calibration to pin")
             elif key in (ord("q"), 27):
                 break
 

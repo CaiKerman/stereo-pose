@@ -149,6 +149,14 @@ class StereoCalibrationMetadata:
     sample_epipolar_max_px: Optional[float] = None
     readiness: Optional[float] = None
     created_at: Optional[str] = None
+
+    camera_left: Optional[int] = None
+    camera_right: Optional[int] = None
+    camera_backend: Optional[str] = None
+    camera_requested_size: Optional[Tuple[int, int]] = None  # (width, height)
+    camera_requested_fps: Optional[float] = None
+    camera_actual_fps: Optional[float] = None
+
     warnings: list = field(default_factory=list)
 
 

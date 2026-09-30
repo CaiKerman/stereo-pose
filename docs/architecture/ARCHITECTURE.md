@@ -16,7 +16,7 @@ Each subsystem is a Python subpackage under `src/stereo_pose/`:
 | Subpackage | Responsibility | Key types / entry points |
 |---|---|---|
 | `capture/` | Open webcams and read matched stereo pairs | `open_camera`, `read_stereo_pair` |
-| `calibration/` | Collect stable checkerboard pairs and solve stereo calibration | `RuntimeCalibration`, `newest_calibration`, `load_calibration_metadata` |
+| `calibration/` | Collect stable checkerboard pairs and solve stereo calibration | `RuntimeCalibration`, `newest_calibration`, `load_calibration_metadata`, `validate_calibration_compatibility` |
 | `pose/` | YOLO Pose inference and device resolution | `PoseEstimator`, `resolve_device` |
 | `geometry/` | Rectified triangulation + error metrics | `StereoTriangulator` |
 | `quality/` | Measurement quality score and accept/reject gates | `evaluate_measurement`, `heuristic_quality_score`, `TemporalSpeedGate` |
@@ -24,7 +24,7 @@ Each subsystem is a Python subpackage under `src/stereo_pose/`:
 | `coordinates/` | Rigid-transform math scaffold | `RigidTransform` |
 | `outputs/` | Publishers and `stereo_pose_3d/v1.2` adapter | `build_publisher`, `to_v1_message` |
 | `diagnostics/` | Structured logging + offline doctor | `configure_logging`, `doctor.main` |
-| `persistence/` | Runtime artifact cleanup within managed roots | `cleanup_project` |
+| `persistence/` | Runtime artifact cleanup within managed roots + promote to saved library | `cleanup_project`, `promote_calibration`, `auto_dir`, `saved_dir` |
 | `app/` | Live pipeline orchestration + visualization | `app.runner.run` |
 
 Cross-cutting modules at package root (shared vocabulary / configuration):

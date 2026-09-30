@@ -19,7 +19,7 @@
   "properties": {
     "camera": {
       "type": "object",
-      "required": ["left", "right", "width", "height", "fps", "backend", "alternate_grab_order"],
+      "required": ["left", "right", "width", "height", "fps", "backend", "fourcc", "buffer_size", "alternate_grab_order"],
       "properties": {
         "left": { "type": "integer", "minimum": 0 },
         "right": { "type": "integer", "minimum": 0 },
@@ -27,6 +27,8 @@
         "height": { "type": "integer", "minimum": 1 },
         "fps": { "type": "number", "exclusiveMinimum": 0 },
         "backend": { "type": "string", "enum": ["auto", "dshow", "msmf", "v4l2"] },
+        "fourcc": { "type": "string", "minLength": 4, "maxLength": 4 },
+        "buffer_size": { "type": "integer", "minimum": 1 },
         "alternate_grab_order": { "type": "boolean" }
       }
     },
@@ -125,6 +127,7 @@
     "runtime": {
       "type": "object",
       "properties": {
+        "root": { "type": "string", "minLength": 1 },
         "show_preview": { "type": "boolean" },
         "log_dir": { "type": "string", "minLength": 1 }
       }

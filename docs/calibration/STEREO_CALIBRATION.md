@@ -10,15 +10,26 @@ origin/X/Y — none of which is defined in this task.
 
 ## Artifact policy
 
-Stereo calibration files are **versioned, not overwritten**:
+Stereo calibration files are **versioned, not overwritten**, and are split into
+two managed classes under the runtime calibration directory:
 
 ```text
-runtime/calibrations/stereo_YYYYMMDD_HHMMSS.npz
+runtime/calibrations/
+├─ auto/stereo_YYYYMMDD_HHMMSS.npz        # rolling, auto-generated; rolled by cleanup
+└─ saved/<name>.npz + <name>.meta.json    # user-pinned library; never auto-cleaned
 ```
 
-Loading uses the newest versioned file by modification time
-(`calibration.selection.newest_calibration`), with a legacy fallback to
-`stereo_calib.npz` for compatibility.
+New solves (`RuntimeCalibration`) land in `auto/`. A generated calibration can
+be promoted into the preserved library with
+`persistence.promote.promote_calibration` (or the live-app `P` hotkey); the
+promotion copies the artifact byte-for-byte and writes a sidecar
+`<name>.meta.json` with name, provenance, notes, original path, and a SHA-256
+checksum. `saved/` is never touched by automatic cleanup.
+
+Loading (`calibration.selection.newest_calibration`) picks the newest `auto/`
+file by modification time, ignores `saved/` unless an explicit path is supplied,
+and falls back to legacy flat `stereo_*.npz` / `stereo_calib.npz` for read
+compatibility.
 
 ## Solver
 
@@ -46,12 +57,24 @@ outlier samples by rectified epipolar error.
 | `readiness` | heuristic sample-preparation score (not a confidence) |
 | `created_at` | `YYYYMMDD_HHMMSS` |
 | `_schema_version` | software/schema version |
+| `camera_left`, `camera_right` | camera indices used to capture |
+| `camera_backend` | OpenCV backend name used |
+| `camera_requested_size` | requested (width, height) |
+| `camera_requested_fps` | requested FPS |
+| `camera_actual_fps` | reported actual FPS (if available) |
+
+`RuntimeCalibration.set_camera_context` records the capture camera identity and
+configuration so a loaded artifact can be checked against the currently active
+cameras.
 
 ## Loading and compatibility
 
 `calibration.metadata.load_calibration_metadata` checks required keys and
-emits warnings (rather than silently assuming validity) when
-`image_size` or board geometry mismatch caller expectations.
+emits warnings (rather than silently assuming validity) when `image_size`,
+board geometry, or camera FPS mismatch caller expectations. The live load path
+calls `validate_calibration_compatibility(path, image_size, board, fps)` to
+surface resolution / board / FPS mismatches against the active capture before a
+calibration is activated — it only warns, never rejects.
 
 `geometry.StereoTriangulator` accepts either an NPZ path or a mapping of the
 required matrices, so synthetic geometry can be tested without a real
@@ -65,6 +88,9 @@ synchronized; host grab skew is not sensor exposure timing.
 
 ## Cleanup
 
-`persistence.cleanup.cleanup_project` keeps the latest N calibration NPZs and
-removes abandoned sessions older than a configurable age. It only touches
-managed runtime roots and never recursively deletes arbitrary user paths.
+`persistence.cleanup.cleanup_project` keeps the latest N `auto/` calibration
+NPZs and removes abandoned sessions older than a configurable age. It only
+deletes paths whose resolved absolute location is inside a trusted managed
+runtime root, never touches `saved/`, and raises `CleanupSafetyError` instead of
+deleting anything outside the managed boundaries. `saved/` pinned artifacts
+survive regardless of age or count.

@@ -6,6 +6,8 @@
     "height": 720,
     "fps": 30,
     "backend": "auto",
+    "fourcc": "MJPG",
+    "buffer_size": 1,
     "alternate_grab_order": true
   },
   "pose": {
@@ -75,6 +77,7 @@
     }
   },
   "runtime": {
+    "root": "runtime",
     "show_preview": true,
     "log_dir": "runtime/logs"
   }

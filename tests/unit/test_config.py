@@ -57,6 +57,24 @@ class TestValidateConfig(unittest.TestCase):
         with self.assertRaises(ConfigError):
             validate_config(cfg)
 
+    def test_invalid_fourcc_raises(self):
+        cfg = load_config(None)
+        cfg["camera"]["fourcc"] = "TOOLONG"
+        with self.assertRaises(ConfigError):
+            validate_config(cfg)
+
+    def test_invalid_buffer_size_raises(self):
+        cfg = load_config(None)
+        cfg["camera"]["buffer_size"] = 0
+        with self.assertRaises(ConfigError):
+            validate_config(cfg)
+
+    def test_non_string_runtime_root_raises(self):
+        cfg = load_config(None)
+        cfg["runtime"]["root"] = 123
+        with self.assertRaises(ConfigError):
+            validate_config(cfg)
+
     def test_aggregated_messages(self):
         cfg = load_config(None)
         cfg["camera"]["backend"] = "bad"

@@ -57,3 +57,47 @@
   weights); see `TEST_REPORT.md` untested hardware paths.
 - `cv2.undistortPoints` returns `float32` rectified UV coordinates (unchanged
   from reference), introducing negligible rounding on rectified pixel positions.
+
+## Review round 1 (PR #1 feedback)
+
+### Added
+
+- `persistence/paths.py` — `auto/` / `saved/` managed subdirectory helpers.
+- `persistence/promote.py` — `promote_calibration` (copies a generated artifact
+  into `saved/` and writes a `*.meta.json` sidecar with name / provenance /
+  notes / original path / SHA-256) and `library_meta_path`.
+- `calibration.metadata.validate_calibration_compatibility` — returns
+  resolution / board / FPS mismatch warnings for the live load path.
+- `RuntimeCalibration.set_camera_context` and `StereoCalibrationMetadata` camera
+  fields (left/right index, backend, requested/actual resolution and FPS).
+- Config keys `camera.fourcc`, `camera.buffer_size`, `runtime.root` (schema +
+  validation), wired into `open_camera` and cleanup.
+- Tests: `test_promote.py`, `test_calibration_metadata.py`, `test_camera.py`;
+  rewrote `test_cleanup.py` and `test_calibration_selection.py`; extended
+  `test_config.py`. Suite grew from 63 to 88 tests.
+
+### Modified
+
+- `persistence/cleanup.py` — trusted-runtime-root guard; deletes only `auto/`
+  and the session area, never `saved/`; raises `CleanupSafetyError` on
+  out-of-bound paths; bails if >10000 items would be removed.
+- `calibration/collection.py` — new solves land in `auto/` and embed camera
+  context metadata.
+- `calibration/selection.py` — prefers `auto/`, ignores `saved/` unless explicit.
+- `app/runner.py` — `P` hotkey pins the active calibration; startup
+  compatibility report; passes `runtime.root` to cleanup; fourcc/buffer_size from
+  config; restored `readiness < recommended_readiness` pre-solve warning.
+- `diagnostics/doctor.py` — reports `auto` / `saved` / `legacy` calibration counts.
+
+### Behavior changes
+
+- Calibration artifacts are now split into `auto/` (rolling, cleanup-managed)
+  and `saved/` (pinned, never auto-deleted).
+- Cleanup requires resolved paths to be inside a trusted runtime root.
+- Camera `fourcc` and `buffer_size` are configurable (defaults `MJPG` / `1`
+  preserved for backward compatibility).
+
+### Numerical behavior changes
+
+- None. Measurement math is unchanged; the new compatibility checks are
+  warn-only and never reject a calibration.

@@ -35,6 +35,25 @@ implementation detail is omitted.
 5. **No final world X/Y convention invented** — the rigid-transform scaffold is
    geometry-only, and the current output remains rectified-left-camera.
 
+## Review round 1 (response notes)
+
+Implemented in response to PR #1 review:
+
+- Calibration artifacts split into `auto/` (rolling, cleanup) and `saved/`
+  (pinned) with a `promote_calibration` API + live `P` hotkey.
+- Cleanup gated behind a trusted-runtime-root path guard; `saved/` is never
+  auto-deleted.
+- Calibration NPZ records camera context (indices/backend/requested+actual
+  size+FPS), and the load path warns on resolution/board/FPS mismatch.
+- Restored the `readiness < recommended_readiness` pre-solve warning.
+- `camera.fourcc` and `camera.buffer_size` are configurable (defaults
+  `MJPG`/`1` preserve prior behavior).
+
+No new owner decisions result from this round; the only convention worth
+confirming is the `saved/` sidecar naming (`<name>.npz` + `<name>.meta.json`) and
+that a promoted artifact is selected only via an explicit path, never by
+newest-file auto-selection.
+
 ## Handoff
 
 - Task branch: `feat/001-engineering-foundation`

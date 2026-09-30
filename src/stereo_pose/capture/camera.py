@@ -21,11 +21,23 @@ def _backend_code(name):
     return _BACKEND_CODES.get(name)
 
 
-def open_camera(index, width=1280, height=720, fps=30, backend="auto"):
+def _fourcc_code(fourcc):
+    """Validate and convert a 4-character FOURCC string to an int code."""
+    if fourcc is None:
+        return None
+    s = str(fourcc)
+    if len(s) != 4 or not all(32 <= ord(ch) < 127 for ch in s):
+        raise ValueError(f"fourcc must be a 4-character ASCII code, got {fourcc!r}")
+    return cv2.VideoWriter_fourcc(*s)
+
+
+def open_camera(index, width=1280, height=720, fps=30, backend="auto", fourcc="MJPG", buffer_size=1):
     """Open a camera by index, applying requested resolution/FPS/backend.
 
     On Windows, an explicit backend code is tried first (DSHOW) before falling
-    back to the platform default when ``backend`` is ``auto``.
+    back to the platform default when ``backend`` is ``auto``. ``fourcc`` and
+    ``buffer_size`` are requested where supported; they centralise the
+    previously hard-coded ``MJPG`` / ``1`` values as configurable options.
     """
     code = _backend_code(backend)
     if code is None and os.name == "nt":
@@ -44,8 +56,11 @@ def open_camera(index, width=1280, height=720, fps=30, backend="auto"):
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(width))
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(height))
     cap.set(cv2.CAP_PROP_FPS, int(fps))
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    fourcc_code = _fourcc_code(fourcc)
+    if fourcc_code is not None:
+        cap.set(cv2.CAP_PROP_FOURCC, fourcc_code)
+    if buffer_size is not None and int(buffer_size) > 0:
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, int(buffer_size))
     return cap
 
 

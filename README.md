@@ -44,7 +44,7 @@ stereo-pose/
 │  ├─ coordinates/           # rigid transform scaffold
 │  ├─ outputs/               # publishers + v1 message adapter
 │  ├─ diagnostics/           # logging + offline doctor
-│  ├─ persistence/           # runtime artifact cleanup
+│  ├─ persistence/           # runtime artifact cleanup + save/promote library
 │  └─ app/                   # live pipeline orchestration
 ├─ tests/                    # unit + regression + integration
 ├─ runtime/                  # managed runtime artifacts (gitignored)
@@ -91,6 +91,10 @@ under `runtime/` and are not committed.
 ```bash
 python -m unittest discover -s tests -t .
 ```
+
+The `src/` package must be importable for the tests; install it first
+(`pip install -e .`) or run with `PYTHONPATH=src`. `python -m pytest` runs the
+same suite out of the box (pytest auto-detects the `src` layout).
 
 All deterministic tests run without webcams, CUDA, or model weights.
 

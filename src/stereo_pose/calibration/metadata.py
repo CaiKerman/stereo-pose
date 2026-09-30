@@ -36,11 +36,12 @@ def load_calibration_metadata(
     path,
     expected_image_size: Optional[Tuple[int, int]] = None,
     expected_board: Optional[Tuple[int, int]] = None,
+    expected_fps: Optional[float] = None,
 ) -> StereoCalibrationMetadata:
     """Load a calibration NPZ into :class:`StereoCalibrationMetadata`.
 
-    Checks required keys, then optionally warns about resolution/board-geometry
-    mismatches against caller expectations.
+    Checks required keys, then optionally warns about resolution/board-geometry/
+    fps mismatches against caller expectations.
     """
     p = Path(path)
     if not p.exists():
@@ -67,6 +68,20 @@ def load_calibration_metadata(
     if "_schema_version" in c:
         meta.schema_version = str(np.asarray(c["_schema_version"]).reshape(-1)[0])
 
+    if "camera_left" in c:
+        meta.camera_left = int(np.asarray(c["camera_left"]).reshape(-1)[0])
+    if "camera_right" in c:
+        meta.camera_right = int(np.asarray(c["camera_right"]).reshape(-1)[0])
+    if "camera_backend" in c:
+        meta.camera_backend = str(np.asarray(c["camera_backend"]).reshape(-1)[0])
+    if "camera_requested_size" in c:
+        cs = np.asarray(c["camera_requested_size"]).reshape(-1).astype(int)
+        meta.camera_requested_size = (int(cs[0]), int(cs[1]))
+    if "camera_requested_fps" in c:
+        meta.camera_requested_fps = float(np.asarray(c["camera_requested_fps"]).reshape(-1)[0])
+    if "camera_actual_fps" in c:
+        meta.camera_actual_fps = float(np.asarray(c["camera_actual_fps"]).reshape(-1)[0])
+
     # Compatibility warnings (never silently assume validity).
     if expected_image_size is not None and meta.image_size is not None:
         if tuple(meta.image_size) != tuple(expected_image_size):
@@ -79,4 +94,30 @@ def load_calibration_metadata(
                 f"calibration board {meta.board_cols}x{meta.board_rows} "
                 f"!= expected {expected_board}"
             )
+    if expected_fps is not None and meta.camera_requested_fps is not None:
+        if float(meta.camera_requested_fps) != float(expected_fps):
+            meta.warnings.append(
+                f"calibration requested_fps {meta.camera_requested_fps} != expected {expected_fps}"
+            )
     return meta
+
+
+def validate_calibration_compatibility(
+    path,
+    image_size,
+    board=None,
+    fps=None,
+) -> list:
+    """Return compatibility warning strings for a calibration vs. an active capture.
+
+    Pure and deterministic (no printing): loads the artifact metadata and
+    compares its recorded image size / board geometry / FPS against the caller's
+    expectations. Used by the live load path before a calibration is activated.
+    """
+    meta = load_calibration_metadata(
+        path,
+        expected_image_size=tuple(image_size) if image_size is not None else None,
+        expected_board=tuple(board) if board is not None else None,
+        expected_fps=None if fps is None else float(fps),
+    )
+    return meta.warnings

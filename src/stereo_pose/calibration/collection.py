@@ -17,6 +17,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from stereo_pose.persistence.paths import auto_dir
+
 _SCHEMA_VERSION = "1"
 
 
@@ -56,6 +58,37 @@ class RuntimeCalibration:
         self.last_capture_t = 0.0
         self.current = None
         self.stability_history = deque()
+        self.camera_context = None
+
+    def set_camera_context(self, left_index, right_index, backend, requested_size, requested_fps, actual_fps=None):
+        """Record the camera identity/config used to capture this calibration.
+
+        This payload is embedded in the solved NPZ so later compatibility
+        diagnostics have evidence to compare against the active capture.
+        """
+        self.camera_context = {
+            "left_index": int(left_index),
+            "right_index": int(right_index),
+            "backend": str(backend or "auto"),
+            "requested_size": (int(requested_size[0]), int(requested_size[1])),
+            "requested_fps": float(requested_fps),
+            "actual_fps": None if actual_fps is None else float(actual_fps),
+        }
+
+    def _camera_context_fields(self):
+        if not self.camera_context:
+            return {}
+        cc = self.camera_context
+        fields = {
+            "camera_left": np.array(cc["left_index"]),
+            "camera_right": np.array(cc["right_index"]),
+            "camera_backend": np.array(cc["backend"]),
+            "camera_requested_size": np.array(cc["requested_size"]),
+            "camera_requested_fps": np.array(cc["requested_fps"]),
+        }
+        if cc["actual_fps"] is not None:
+            fields["camera_actual_fps"] = np.array(cc["actual_fps"])
+        return fields
 
     def start(self):
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -368,32 +401,34 @@ class RuntimeCalibration:
         epi_mean = float(np.mean(epi)) if len(epi) else float("nan")
         epi_max = float(np.max(epi)) if len(epi) else float("nan")
 
-        self.calibration_dir.mkdir(parents=True, exist_ok=True)
+        out_dir = auto_dir(self.calibration_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out = self.calibration_dir / f"stereo_{stamp}.npz"
+        out = out_dir / f"stereo_{stamp}.npz"
 
-        np.savez(
-            out,
-            K1=solution["K1"], D1=solution["D1"],
-            K2=solution["K2"], D2=solution["D2"],
-            R=solution["R"], T=solution["T"], E=solution["E"], F=solution["F"],
-            R1=solution["R1"], R2=solution["R2"],
-            P1=solution["P1"], P2=solution["P2"], Q=solution["Q"],
-            image_size=np.array(image_size),
-            board_cols=np.array(self.cols), board_rows=np.array(self.rows),
-            square_mm=np.array(self.square_mm),
-            left_rms=np.array(solution["left_rms"]),
-            right_rms=np.array(solution["right_rms"]),
-            stereo_rms=np.array(solution["stereo_rms"]),
-            sample_count=np.array(len(objpoints)),
-            sample_count_initial=np.array(initial_count),
-            pruned_count=np.array(pruned_count),
-            sample_epipolar_mean_px=np.array(epi_mean),
-            sample_epipolar_max_px=np.array(epi_max),
-            readiness=np.array(self.readiness()),
-            created_at=np.array(stamp),
-            _schema_version=np.array(_SCHEMA_VERSION),
-        )
+        save_fields = {
+            "K1": solution["K1"], "D1": solution["D1"],
+            "K2": solution["K2"], "D2": solution["D2"],
+            "R": solution["R"], "T": solution["T"], "E": solution["E"], "F": solution["F"],
+            "R1": solution["R1"], "R2": solution["R2"],
+            "P1": solution["P1"], "P2": solution["P2"], "Q": solution["Q"],
+            "image_size": np.array(image_size),
+            "board_cols": np.array(self.cols), "board_rows": np.array(self.rows),
+            "square_mm": np.array(self.square_mm),
+            "left_rms": np.array(solution["left_rms"]),
+            "right_rms": np.array(solution["right_rms"]),
+            "stereo_rms": np.array(solution["stereo_rms"]),
+            "sample_count": np.array(len(objpoints)),
+            "sample_count_initial": np.array(initial_count),
+            "pruned_count": np.array(pruned_count),
+            "sample_epipolar_mean_px": np.array(epi_mean),
+            "sample_epipolar_max_px": np.array(epi_max),
+            "readiness": np.array(self.readiness()),
+            "created_at": np.array(stamp),
+            "_schema_version": np.array(_SCHEMA_VERSION),
+        }
+        save_fields.update(self._camera_context_fields())
+        np.savez(out, **save_fields)
 
         result = {
             "path": out,

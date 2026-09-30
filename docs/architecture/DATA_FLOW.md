@@ -64,20 +64,24 @@ Runtime calibration (`RuntimeCalibration`) is a separate mode. It:
 3. captures pairs (auto or manual), enforcing diversity;
 4. solves with `cv2.calibrateCamera` + `cv2.stereoCalibrate` + `cv2.stereoRectify`;
 5. optionally robust-prunes outliers and re-solves;
-6. writes a versioned NPZ (`stereo_YYYYMMDD_HHMMSS.npz`).
+6. writes a versioned NPZ into the calibration `auto/` area
+   (`auto/stereo_YYYYMMDD_HHMMSS.npz`).
 
 Metadata recorded in the NPZ includes stereo/left/right RMS, sample epipolar
-statistics, sample/prune counts, readiness, image size, board geometry, and
-creation time.
+statistics, sample/prune counts, readiness, image size, board geometry, creation
+time, and the capture camera identity/config (indices, backend, requested /
+actual resolution and FPS).
 
 ## Generated artifacts
 
 ```text
 runtime/
-├─ calibrations/stereo_YYYYMMDD_HHMMSS.npz   # versioned calibration
+├─ calibrations/auto/stereo_*.npz          # rolling calibrations (cleanup-managed)
+├─ calibrations/saved/<name>.npz(.meta.json)  # user-pinned library (never auto-cleaned)
 ├─ sessions/session_*/left|right/*.png        # captured calibration source (transient)
 ├─ logs/stereo_pose.log                       # rotating logs
 └─ captures/                                  # reserved for future captures
 ```
 
-Cleanup (`persistence.cleanup`) only operates inside these managed roots.
+Cleanup (`persistence.cleanup`) only operates inside these managed roots, touches
+only `calibrations/auto/` and the session area, and never deletes `saved/`.

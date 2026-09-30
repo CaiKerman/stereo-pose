@@ -20,6 +20,8 @@ DEFAULT_CONFIG: dict = {
         "height": 720,
         "fps": 30,
         "backend": "auto",
+        "fourcc": "MJPG",
+        "buffer_size": 1,
         "alternate_grab_order": True,
     },
     "pose": {
@@ -85,6 +87,7 @@ DEFAULT_CONFIG: dict = {
         "udp": {"enabled": False, "host": "127.0.0.1", "port": 5005},
     },
     "runtime": {
+        "root": "runtime",
         "show_preview": True,
         "log_dir": "runtime/logs",
     },
@@ -201,6 +204,10 @@ def validate_config(cfg: dict) -> None:
     backend = c.get("backend")
     if not isinstance(backend, str) or backend.lower() not in _CAMERA_BACKENDS:
         _err(errors, "camera.backend", f"must be one of {sorted(_CAMERA_BACKENDS)}")
+    fourcc = c.get("fourcc")
+    if not isinstance(fourcc, str) or len(fourcc) != 4 or not all(32 <= ord(ch) < 127 for ch in fourcc):
+        _err(errors, "camera.fourcc", "must be a 4-character ASCII code (e.g. 'MJPG')")
+    _int(c.get("buffer_size"), "camera.buffer_size", errors, lo=1)
     _bool(c.get("alternate_grab_order"), "camera.alternate_grab_order", errors)
 
     p = cfg.get("pose", {})
@@ -282,6 +289,7 @@ def validate_config(cfg: dict) -> None:
         _int(udp.get("port"), "output.udp.port", errors, lo=1, hi=65535)
 
     r = cfg.get("runtime", {})
+    _str(r.get("root"), "runtime.root", errors)
     _bool(r.get("show_preview"), "runtime.show_preview", errors)
     _str(r.get("log_dir"), "runtime.log_dir", errors)
 

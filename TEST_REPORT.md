@@ -1,25 +1,34 @@
-# Test report — Task 001
+# Test report — Task 001 (+ review round 1)
 
-## Exact test command
+## Exact test commands
+
+From the repository root, with `src/` on the path (see note below):
 
 ```bash
-python -m unittest discover -s tests -t .
+# Python on Windows (PowerShell)
+$env:PYTHONPATH="src"; python -m unittest discover -s tests -t .
+
+# Or, equivalently, pytest auto-detects the src layout:
+python -m pytest -q
 ```
 
-From the repository root.
+Note: the `src/` package must be importable for `unittest discover`. Either
+`pip install -e .` first, or set `PYTHONPATH=src` on the command line.
 
 ## Results
 
-- Ran: 63 tests
-- Passed: 63
+- Ran: 88 tests
+- Passed: 87
 - Failed: 0
-- Skipped: 0
-- Duration: ~0.25 s
+- Skipped: 1 (`test_rejects_symlink_escape` — symlinks not supported on this
+  platform without elevation)
+- Duration: ~1s (pytest), ~0.4s (unittest)
 
 ## Environment
 
 - OS: Windows 10 Pro
 - Python: 3.10.11 (CPython)
+- pytest: 9.1.1
 - NumPy: 2.2.6
 - OpenCV (cv2): 4.13.0
 - torch: NOT installed
@@ -35,13 +44,16 @@ Tests run with no webcams, no CUDA, and no model weights.
 | synthetic stereo triangulation | `tests/regression/test_geometry.py` |
 | epipolar error | `tests/regression/test_geometry.py` |
 | reprojection error | `tests/regression/test_geometry.py` |
-| calibration newest-file selection | `tests/unit/test_calibration_selection.py` |
-| configuration merge + validation | `tests/unit/test_config.py` |
+| calibration selection (auto/ vs saved/) | `tests/unit/test_calibration_selection.py` |
+| calibration metadata + compatibility warnings | `tests/unit/test_calibration_metadata.py` |
+| calibration promote/pin to saved library | `tests/unit/test_promote.py` |
+| cleanup safety boundaries (root guard, auto-only) | `tests/unit/test_cleanup.py` |
+| camera fourcc validation | `tests/unit/test_camera.py` |
+| configuration merge + validation (incl. fourcc/buffer_size/runtime.root) | `tests/unit/test_config.py` |
 | quality accept/reject | `tests/unit/test_quality.py` |
 | One Euro filter behavior + reset | `tests/unit/test_one_euro.py` |
 | joint-group selection | `tests/unit/test_joints.py` |
 | v1 message serialization | `tests/unit/test_v1_message.py` |
-| cleanup safety boundaries | `tests/unit/test_cleanup.py` |
 | rigid transform math scaffold | `tests/unit/test_rigid_transform.py` |
 | package import (offline) | `tests/integration/test_imports.py` |
 | doctor command (offline) | `tests/integration/test_doctor.py` |
@@ -51,6 +63,9 @@ Tests run with no webcams, no CUDA, and no model weights.
 - Live two-webcam acquisition and real-time tracking (requires cameras).
 - Real checkerboard stereo calibration solve (requires boards + cameras).
 - CUDA device selection and actual YOLO inference (requires torch + weights).
+- Symlink-escape path is skipped on this platform (no symlink privilege); the
+  guard logic is still asserted on a resolved-outside path in
+  `test_rejects_dirs_outside_trusted_root_without_deletion`.
 
 The deterministic suite intentionally exercises all numerical logic that does
 not require hardware or network.
