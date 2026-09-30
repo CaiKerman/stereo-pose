@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local model weights
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Runtime-generated project data
+runtime/calibrations/*
+runtime/sessions/*
+runtime/logs/*
+runtime/captures/*
+!runtime/calibrations/.gitkeep
+!runtime/sessions/.gitkeep
+!runtime/logs/.gitkeep
+!runtime/captures/.gitkeep
+
+# Legacy/generated measurement artifacts
+calibrations/
+calib_sessions/
+output/
+*.npz
+*.jsonl
+
+# Build/package output
+build/
+dist/
+*.egg-info/
