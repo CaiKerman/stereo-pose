@@ -1,0 +1,176 @@
+name: Build Task001 RC ZIP
+
+on:
+  push:
+    branches:
+      - feat/001-engineering-foundation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build portable source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="dist/stereo_pose_Task001_RC"
+          mkdir -p "$OUT"
+
+          cp -r src "$OUT/src"
+          cp -r configs "$OUT/configs"
+          cp README.md "$OUT/PROJECT_README.md"
+          cp configs/default.json "$OUT/config.json"
+
+          cat > "$OUT/RUN_ME.py" <<'PY'
+          from __future__ import annotations
+          import importlib
+          import os
+          import sys
+          import traceback
+          from pathlib import Path
+
+          ROOT = Path(__file__).resolve().parent
+          SRC = ROOT / "src"
+          sys.path.insert(0, str(SRC))
+          os.chdir(ROOT)
+
+          def fail(msg: str, details: str | None = None) -> None:
+              print("\n" + "=" * 72)
+              print("STEREO POSE - CANNOT START")
+              print("=" * 72)
+              print(msg)
+              if details:
+                  print("\nDetails:")
+                  print(details)
+              print("\nNothing was installed or changed in your Python environment.")
+              print("Use the same Python environment that previously ran your stereo-pose PoC.")
+              print("=" * 72)
+              try:
+                  input("\nPress Enter to close...")
+              except EOFError:
+                  pass
+              raise SystemExit(1)
+
+          required = [
+              ("numpy", "NumPy"),
+              ("cv2", "OpenCV"),
+              ("torch", "PyTorch"),
+              ("ultralytics", "Ultralytics"),
+          ]
+          missing = []
+          for module_name, display in required:
+              try:
+                  importlib.import_module(module_name)
+              except Exception as e:
+                  missing.append(f"{display} ({module_name}): {e}")
+
+          if missing:
+              fail(
+                  "This Python environment is missing dependencies required for the live test.",
+                  "\n".join(missing),
+              )
+
+          model = ROOT / "yolo11n-pose.pt"
+          if not model.exists():
+              fail(
+                  "Missing yolo11n-pose.pt in this folder.",
+                  "Copy the same yolo11n-pose.pt you used for the previous PoC into the folder next to RUN_ME.py.",
+              )
+
+          try:
+              from stereo_pose.config import load_config
+              from stereo_pose.diagnostics.doctor import run_doctor, render_doctor
+
+              cfg = load_config(ROOT / "config.json")
+              print(render_doctor(run_doctor(cfg)))
+              print("\n" + "=" * 72)
+              print("Starting live stereo pose test. Hotkeys:")
+              print("  C = calibration   R = solve (inside calibration)")
+              print("  P = pin/save active calibration")
+              print("  F = smoothing on/off   G = cleanup   Q/ESC = quit")
+              print("=" * 72 + "\n")
+
+              from stereo_pose.app.runner import main
+              sys.argv = ["stereo_pose run", "--config", str(ROOT / "config.json")]
+              main()
+          except SystemExit:
+              raise
+          except Exception:
+              fail("The program stopped with an error.", traceback.format_exc())
+          PY
+
+          cat > "$OUT/RUN_ME.bat" <<'BAT'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          title Stereo Pose Task001 RC
+
+          echo ================================================================
+          echo Stereo Pose Task001 RC
+          echo No project installation will be performed.
+          echo ================================================================
+          echo.
+
+          where python >nul 2>nul
+          if errorlevel 1 (
+            echo Python was not found in PATH.
+            echo.
+            echo Please run this from the same Python environment that previously
+            echo ran your stereo-pose PoC, or tell us which Python executable you used.
+            echo.
+            pause
+            exit /b 1
+          )
+
+          python "%~dp0RUN_ME.py"
+          if errorlevel 1 (
+            echo.
+            echo RUN_ME.py exited with an error.
+          )
+          echo.
+          pause
+          BAT
+
+          cat > "$OUT/README_先看我.txt" <<'TXT'
+          Stereo Pose Task001 RC - 实机验收包
+
+          1. 本包不会 pip install 本项目，也不会修改 site-packages。
+          2. 请把你之前用过的 yolo11n-pose.pt 放到本目录，与 RUN_ME.bat 同级。
+          3. 推荐：在“之前能成功运行双目 PoC 的 Python 环境”中运行 RUN_ME.bat。
+             如果双击 RUN_ME.bat 恰好调用了错误的 Python，它会报缺少依赖并停止，不会安装任何东西。
+          4. 默认相机：left=0, right=1；如需修改，请编辑 config.json。
+          5. 默认标定板：9 x 6 内角点，25 mm 方格（即 10 x 7 方格棋盘）。
+          6. 热键：
+             C     进入/离开标定
+             SPACE 手动采样（仍需棋盘稳定）
+             R     求解标定
+             X     放弃当前标定 session
+             P     固定保存当前标定
+             F     开关平滑
+             G     清理自动历史
+             Q/ESC 退出
+
+          运行过程中生成的数据都在本文件夹的 runtime/ 下。
+          不想要了，直接删除整个解压文件夹即可。
+          TXT
+
+          cat > "$OUT/DO_NOT_PIP_INSTALL.txt" <<'TXT'
+          This RC is intentionally source-portable.
+          RUN_ME.py adds ./src to sys.path at runtime.
+          There is no need to run pip install -e . for this test bundle.
+          TXT
+
+      - name: Upload RC artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stereo-pose-Task001-RC
+          path: dist/stereo_pose_Task001_RC
+          if-no-files-found: error
+          retention-days: 7
