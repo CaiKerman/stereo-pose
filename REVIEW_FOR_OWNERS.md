@@ -34,7 +34,7 @@ implementation detail is omitted.
 
 - Task branch: `feat/002-metric-validation-diagnostics`
 - Pull request: https://github.com/CaiKerman/stereo-pose/pull/2
-- Head commit SHA (round 1): pending — updated on push
+- Head commit SHA (round 1): `9a68f428956a28a2a0d36629bac9810a91a15c31`
 
 ## Task 001 — Need decision
 
