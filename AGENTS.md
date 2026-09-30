@@ -25,6 +25,17 @@ If two sources conflict, do not silently choose a new convention. Record the con
 - Do not merge your own PR unless the owner explicitly instructs you to do so.
 - Do not force-push shared reviewed history unless explicitly authorized.
 
+## 2.1 Review feedback channel
+
+Pull-request comments are useful for humans, but implementation environments may not have GitHub API/CLI access to private PR discussions.
+
+Therefore:
+
+- `REVIEW_INBOX.md`, when present and marked OPEN, is the repository-visible authoritative mirror of actionable review feedback.
+- Before continuing an existing task/PR, implementation agents must read `REVIEW_INBOX.md` after pulling the task branch.
+- Resolve every blocking item there, update its status/notes, and keep using the existing task branch and PR.
+- PR comments may duplicate the same feedback, but inability to read PR comments is not a blocker when `REVIEW_INBOX.md` is available.
+
 ## 3. Required task startup sequence
 
 Before coding:
