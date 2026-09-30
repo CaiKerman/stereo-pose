@@ -58,4 +58,7 @@ newest-file auto-selection.
 
 - Task branch: `feat/001-engineering-foundation`
 - Pull request: https://github.com/CaiKerman/stereo-pose/pull/1
-- Head commit SHA: `06f28640cb6a43455e1ef1626224f9fbd8fcccda`
+- Head commit SHA: `2b124fb93534ae8f52d38df693140a421f1a85d2`
+
+Review round 2 (containment guard, pre-delete mass guard, auto-calibration
+precedence, collision-proof promote) is resolved; see `REVIEW_INBOX.md`.
