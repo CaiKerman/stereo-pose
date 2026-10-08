@@ -66,6 +66,47 @@ same Task 002 branch / PR #2.
 - Head commits (002A): implementation `1c73556` + docs commit on top (see `git log` / PR #2)
 - Not merged; awaiting reviewer re-review.
 
+## Task 002B — on-demand diagnostic snapshot (`S`) + compact developer menu (`M`)
+
+Implemented per `docs/instructions/002B_STEREO_SNAPSHOT_AND_DEBUG_MENU.md` on
+the existing working branch `trae/agent-c3dfMx` / PR #3.
+
+### Decisions taken (no new owner input required)
+
+1. **`S` saves only what the loop already holds.** The snapshot module receives
+   the exact left/right frames and pose results from the current tracking
+   iteration; it never opens another camera pair and never reruns YOLO. A
+   self-contained `calibration_snapshot.npz` (intrinsics/distortion/
+   rectification/projection) is copied out so rectified `uv` and signed
+   epipolar deltas can be reproduced offline without the active NPZ or any
+   model/hardware dependency.
+2. **Privacy: snapshots are runtime-only and never committed.** Outputs live
+   under `runtime/diagnostics/snapshots/`, are written atomically and never
+   overwrite history; `G` cleanup does not touch them. Human imagery is
+   sensitive — the code and README both instruct the operator never to upload a
+   snapshot to GitHub or any external service.
+3. **`M` is a pure overlay toggle.** Default collapsed shows camera indexes,
+   calibration state, accepted-joint count, FPS and live alarms; expanded adds
+   the full hotkey row and One Euro internals. No hotkey is remapped or
+   disabled, and no numerical/measurement behavior changes.
+
+### Notes / risks
+
+- The 3 px epipolar acceptance gate is **untouched**, and no speculative
+  left/right joint-order swap was made. That evidence-gathering is exactly what
+  `S` is for: the owner should press `S` on 1–3 static upper-body frames with
+  known large epipolar failures, then inspect them offline before Task 002C
+  proposes a fix.
+- The snapshot/replay path is verified with synthetic frames + exact synthetic
+  calibration only; real hardware `S` capture is left to the owner (no claim of
+  hardware acceptance from fake inputs).
+
+### Handoff (Task 002B)
+
+- Working branch: `trae/agent-c3dfMx` (existing)
+- Pull request: https://github.com/CaiKerman/stereo-pose/pull/3
+- Not merged; awaiting GPT review, then owner `S`-capture acceptance.
+
 ## Task 001 — Need decision
 
 1. **Module layout additions beyond the literal skeleton.** The instruction's

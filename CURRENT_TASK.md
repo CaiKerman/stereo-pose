@@ -2,7 +2,7 @@
 
 ## Active: Task 002B — Stereo diagnostic snapshots + compact developer menu
 
-- **Status:** READY — owner authorized implementation; no merge.
+- **Status:** IMPLEMENTED — S snapshot + offline replay + M menu committed; awaiting GPT review (no merge). Real `S` capture on hardware still needs owner acceptance.
 - **Issue:** https://github.com/CaiKerman/stereo-pose/issues/4
 - **Full spec:** `docs/instructions/002B_STEREO_SNAPSHOT_AND_DEBUG_MENU.md`
 - **Existing working branch:** `trae/agent-c3dfMx`
