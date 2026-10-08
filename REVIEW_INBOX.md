@@ -378,3 +378,19 @@ Test execution for this round (exact, deterministic, no CI claimed):
 
 - [x] After only targeted B5 fix and updated tests/docs, push to existing `trae/agent-c3dfMx` / PR #3 and stop for brief GPT verification. No merge, no new branches or PRs.
 
+
+
+## Task 002B — Reviewer round 3 (2026-10-08)
+
+**Code review: PASSED FOR OWNER REAL-HARDWARE S/M ACCEPTANCE — NOT APPROVED FOR MERGE.**
+
+- PR reviewer verdict: https://github.com/CaiKerman/stereo-pose/pull/3#issuecomment-6063507171
+- Reviewed Trae implementation commit: `288860d297ef32a4258b5f5b5f1d632de6a4497c`.
+- B5 confirmed fixed: offline replay normalizes OpenCV distortion coefficients `(1,5)`, `(5,1)` and `(5,)`; rejects invalid `(2,5)`. Snapshot-write → replay regression tests committed.
+- B1–B4 previously resolved. Documentation and PR body brought current. Trae reported 214 passed, 0 failed, 0 skipped (Linux/headless, no hardware/weights); reviewer has not independently run the whole suite and GitHub CI results are unavailable.
+- [ ] Owner real-hardware check: open existing camera pairing, verify `M` collapsed/expanded, save 1–3 static torso `S` snapshots, inspect complete JSON+PNG+geometry files, rerun `python tools/inspect_snapshot.py <snapshot_dir>` and verify 0 mismatches.
+- [ ] Owner still to confirm interactive camera picker cancel/rescan, if needed for complete 002A UX acceptance.
+- [ ] Task002C evidence-driven human-joint correspondence fix, then Task002 stable-3D reacceptance; Task003 only afterward.
+- Non-blocking: current replay supports current default five-coefficient camera model; extended OpenCV 12/14 coefficients not tested/supported. S writes images synchronously and may cause a one-time UI pause; old README statement 'no real-time effect' is overly broad.
+
+**PR #3 and PR #2 remain open and unmerged; do not delete or merge branches pending owner's measurements.**
