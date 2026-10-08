@@ -4,7 +4,7 @@ cd /d "%~dp0"
 title Stereo Pose - RUN ME
 
 echo ================================================================
-echo Stereo Pose Task001 RC
+echo Stereo Pose Task002 - metric validation + joint diagnostics
 echo This test does NOT pip-install the project.
 echo ================================================================
 echo.

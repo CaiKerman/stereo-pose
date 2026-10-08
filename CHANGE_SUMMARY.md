@@ -1,3 +1,117 @@
+# Change summary — Task 002 (metric validation + joint rejection diagnostics)
+
+## Added
+
+- `src/stereo_pose/validation/` — checkerboard 3D metric validation:
+  `metrics.py` (synthetic-ready metric math: spacing, scale error, plane fit,
+  epipolar/reprojection, depth range), `report.py` (exclusive JSON persistence
+  under `runtime/validation/` that never overwrites and never escapes the
+  managed root), and package exports.
+- `src/stereo_pose/diagnostics/joint_diagnostics.py` — pure, deterministic
+  formatter for the per-joint diagnostic summary and aggregate footer.
+- `models.py` — `JointRejection` and `FrameDiagnostics` dataclasses, plus the
+  optional, internal `PoseFrame.diagnostics` field.
+- `quality/scoring.py` — `RejectionReason` fine-grained terminal states,
+  `classify_joint`, and `aggregate_bucket` mapping fine states to coarse v1.2
+  buckets.
+- `config.py` / `configs/default.json` / `configs/schemas/default.schema.json` —
+  new `diagnostics` section (`enabled`, `every_n_frames`).
+- `docs/validation/METRIC_VALIDATION.md` — validation procedure documentation.
+- Tests: `test_joint_rejection.py`, `test_metric_validation.py`,
+  `test_diagnostics_render.py`, `test_validation_report.py` (33 new tests).
+
+## Modified
+
+- `app/runner.py` — per-joint classification in the tracking loop; `D` hotkey
+  toggles the diagnostic summary, `V` hotkey captures a single-frame metric
+  validation; startup/overlay help text updated.
+- `docs/architecture/ARCHITECTURE.md`, `docs/architecture/DATA_FLOW.md` — new
+  `validation/` subsystem, fine-grained rejection path, and the
+  `runtime/validation/` artifact.
+- `README.md`, `README_先看我.txt`, `RUN_ME.py`, `RUN_ME.bat` — operator help
+  updated with accurate `D`/`V` hotkeys and AUTO/SPACE calibration semantics.
+
+## Deleted
+
+- None.
+
+## Behavior changes
+
+- Tracking now classifies every selected joint into a single terminal state each
+  frame; this is observability only, and does not change acceptance/rejection.
+- `D` and `V` hotkeys are available in tracking mode.
+- Metric validation reports are written under `runtime/validation/`, which is
+  never removed by calibration-history cleanup.
+
+## Numerical behavior changes
+
+- None. Measurement thresholds, quality score, triangulation, filtering, and the
+  v1.2 `rejected` aggregate counters are preserved. `accepted`, missing-pose, and
+  no-calibration states map to no aggregate bucket, exactly matching the v1.2
+  behavior of skipping the joint loop in those cases.
+
+## Protocol/config changes
+
+- `stereo_pose_3d/v1.2` output message unchanged.
+- New optional `diagnostics` config section (defaults `enabled=false`,
+  `every_n_frames=10`).
+- New metric-validation report schema `stereo_pose_3d/metric_validation/v1`
+  (internal, single-frame), stored separately from calibration artifacts.
+
+## Known issues
+
+- Metric validation is single-frame only (`sample_mode=single_frame`); a stable
+  multi-frame aggregate was deferred to avoid unnecessary complexity. The report
+  records `sample_mode` so the distinction is never hidden.
+- Live-camera path was not executed in this environment (no cameras/model
+  weights); the `D`/`V` hotkeys and report files were exercised via the
+  deterministic tests and pure functions only. See `TEST_REPORT.md`.
+
+## Review round 1 (PR #2 feedback)
+
+### Added
+
+- `validation/metrics.py` — `normalize_correspondence` (correspondence
+  normalization choosing between `direct` and `reversed_180` orderings using
+  aggregate rectified epipolar geometry), `_candidate_fit`, and
+  `MetricValidationError`. The `MetricValidationResult` report gains a
+  `corner_order_mode` field.
+- Tests in `tests/unit/test_metric_validation.py`
+  (`TestCorrespondenceNormalization`): direct selects direct, reversed right is
+  corrected, implausible fails cleanly, and reversed input still recovers the
+  expected 25 mm grid. `test_validation_report.py` now asserts
+  `corner_order_mode` round-trips and is a required key.
+
+### Modified
+
+- `validation/metrics.py` — `compute_metric_validation` normalizes corner
+  correspondence before triangulation and raises `MetricValidationError` when
+  neither ordering is geometrically plausible.
+- `validation/__init__.py` — exports `normalize_correspondence`,
+  `MetricValidationError`, `MAX_PLAUSIBLE_MEAN_EPIPOLAR_PX`.
+- `app/runner.py` — the `V` path catches `MetricValidationError` and reports
+  failure instead of writing a misleading report.
+- `docs/validation/METRIC_VALIDATION.md` — documents correspondence
+  normalization, the `corner_order_mode` field, and the failure behavior.
+
+### Behavior changes
+
+- A checkerboard whose two detected corner orderings disagree by 180 degrees is
+  now corrected to a consistent matching before triangulation; previously the
+  positional pairing could create wrong correspondences and inflate the metric
+  error.
+- A capture whose correspondence is implausible under both orderings is rejected
+  (validation failure) rather than emitting misleading 25 mm statistics.
+
+### Numerical behavior changes
+
+- None for the measured metrics on an already-consistent board. The new
+  normalization is evidence-based (epipolar geometry) and records `corner_order_mode`;
+  it never changes the spacing/plane/scale math. No v1.2 output or measurement
+  threshold is affected.
+
+---
+
 # Change summary — Task 001
 
 ## Added

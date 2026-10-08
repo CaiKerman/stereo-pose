@@ -20,12 +20,21 @@ from stereo_pose.config import load_config
 from stereo_pose.filtering import JointSmoother
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, resolve_joints
-from stereo_pose.models import FilteredJoint3D, FrameTiming, JointQuality, PoseFrame
+from stereo_pose.diagnostics.joint_diagnostics import format_diagnostic_summary
+from stereo_pose.models import FilteredJoint3D, FrameDiagnostics, FrameTiming, JointQuality, PoseFrame
 from stereo_pose.outputs import build_publisher
 from stereo_pose.outputs.v1_message import to_v1_message
 from stereo_pose.persistence import cleanup_project, promote_calibration
 from stereo_pose.pose import PoseEstimator, resolve_device
-from stereo_pose.quality import TemporalSpeedGate, heuristic_quality_score
+from stereo_pose.quality import TemporalSpeedGate, aggregate_bucket, classify_joint
+from stereo_pose.validation import (
+    MetricValidationError,
+    compute_metric_validation,
+    detect_checkerboard,
+    render_summary,
+    save_validation_report,
+    timestamp_now,
+)
 
 
 def resize_pair(a, b, target_h=480):
@@ -73,6 +82,46 @@ def _report_calibration_compatibility(calib_path, active_size, board, fps=None):
         print(f"[warning] could not load calibration metadata for {calib_path}: {e}")
 
 
+def _run_metric_validation(triangulator, frame_l, frame_r, stereo_cfg, runtime_root, calib_path):
+    """Detect the checkerboard in both cameras, triangulate, compute a metric
+    report, and persist it under the managed ``runtime/validation`` root.
+
+    Returns the saved report path, or ``None`` when detection failed.
+    """
+    cols = int(stereo_cfg["board_cols"])
+    rows = int(stereo_cfg["board_rows"])
+    square = float(stereo_cfg["square_mm"])
+
+    corner_l = detect_checkerboard(frame_l, cols, rows)
+    corner_r = detect_checkerboard(frame_r, cols, rows)
+    if corner_l is None or corner_r is None:
+        print(
+            f"[validation] checkerboard not fully detected: "
+            f"L={'ok' if corner_l is not None else 'missing'} "
+            f"R={'ok' if corner_r is not None else 'missing'}"
+        )
+        return None
+
+    try:
+        result = compute_metric_validation(
+            triangulator,
+            corner_l,
+            corner_r,
+            board_cols=cols,
+            board_rows=rows,
+            square_mm=square,
+            calibration_file=str(calib_path) if calib_path else None,
+            timestamp=timestamp_now(),
+        )
+    except MetricValidationError as e:
+        print(f"[validation] failed: {e}")
+        return None
+    saved = save_validation_report(result.to_dict(), runtime_root)
+    print(render_summary(result))
+    print(f"[validation] saved report -> {saved}")
+    return saved
+
+
 def run(args, cfg):
     c = cfg["camera"]
     p = cfg["pose"]
@@ -83,6 +132,7 @@ def run(args, cfg):
     scfg = cfg["smoothing"]
     o = cfg["output"]
     r = cfg["runtime"]
+    d = cfg.get("diagnostics", {})
 
     if args.left_cam is not None:
         c["left"] = args.left_cam
@@ -159,12 +209,17 @@ def run(args, cfg):
         "Pairing=grab both -> retrieve both. Host skew is diagnostic only; "
         "commodity webcam exposure timing is not hardware-synchronised."
     )
-    print("Hotkeys: C=calibration | F=smoothing on/off | G=cleanup | P=pin calib | Q/ESC=quit")
+    print(
+        "Hotkeys: C=calibration | F=smoothing on/off | G=cleanup | P=pin calib | "
+        "D=diagnostics | V=validate board | Q/ESC=quit"
+    )
     print("Calibration: AUTO waits for STABLE | SPACE=manual force capture | R=solve | X=discard | C=return\n")
 
     frame_index = 0
     kp_conf = float(p["keypoint_confidence"])
     alternate_grab = bool(c.get("alternate_grab_order", True))
+    diagnostics_enabled = bool(d.get("enabled", False))
+    diag_every = max(1, int(d.get("every_n_frames", 10)))
 
     try:
         while True:
@@ -242,7 +297,6 @@ def run(args, cfg):
             pts_l, cf_l = estimator.best_person_keypoints(res_l)
             pts_r, cf_r = estimator.best_person_keypoints(res_r)
 
-            joints_payload = {}
             joints = {}
             rejected = {
                 "keypoint_confidence": 0,
@@ -254,71 +308,102 @@ def run(args, cfg):
             current_epi = []
             current_reproj = []
 
-            if triangulator is not None and pts_l is not None and pts_r is not None:
-                for name in selected_joints:
-                    i = JOINT_INDEX[name]
-                    if cf_l[i] < kp_conf or cf_r[i] < kp_conf:
-                        rejected["keypoint_confidence"] += 1
-                        continue
+            missing_pose = pts_l is None or pts_r is None
+            verdicts = []
 
+            for name in selected_joints:
+                if triangulator is None or missing_pose:
+                    verdicts.append(
+                        classify_joint(
+                            name,
+                            conf_l=0.0,
+                            conf_r=0.0,
+                            keypoint_confidence=kp_conf,
+                            geometry=None,
+                            qcfg=qcfg,
+                            missing_pose=missing_pose,
+                            calibration_available=triangulator is not None,
+                        )
+                    )
+                    continue
+
+                i = JOINT_INDEX[name]
+                geom = None
+                if cf_l[i] >= kp_conf and cf_r[i] >= kp_conf:
                     geom = triangulator.triangulate_with_quality(pts_l[i], pts_r[i])
-                    if geom is None:
-                        rejected["geometry"] += 1
-                        continue
+                    if geom is not None:
+                        current_epi.append(float(geom["epipolar_error_px"]))
+                        current_reproj.append(float(geom["reprojection_error_max_px"]))
 
-                    epi = float(geom["epipolar_error_px"])
-                    rep = float(geom["reprojection_error_max_px"])
-                    current_epi.append(epi)
-                    current_reproj.append(rep)
+                verdict = classify_joint(
+                    name,
+                    conf_l=float(cf_l[i]),
+                    conf_r=float(cf_r[i]),
+                    keypoint_confidence=kp_conf,
+                    geometry=geom,
+                    qcfg=qcfg,
+                )
 
-                    if (
-                        epi > float(qcfg["max_epipolar_error_px"])
-                        or rep > float(qcfg["max_reprojection_error_px"])
-                    ):
-                        rejected["geometry"] += 1
-                        continue
-
+                if verdict.accepted:
                     raw_xyz = np.asarray(geom["xyz_mm"], dtype=float)
-                    z = float(raw_xyz[2])
-                    if z < float(qcfg["min_depth_mm"]) or z > float(qcfg["max_depth_mm"]):
-                        rejected["depth"] += 1
-                        continue
-
-                    score = heuristic_quality_score(cf_l[i], cf_r[i], epi, rep, qcfg)
-                    if score < float(qcfg.get("min_quality_score", 0.0)):
-                        rejected["quality_score"] += 1
-                        continue
-
                     speed_ok, speed = speed_gate.check(name, raw_xyz, t_filter_s)
                     if not speed_ok:
-                        rejected["speed"] += 1
-                        continue
+                        verdict = classify_joint(
+                            name,
+                            conf_l=float(cf_l[i]),
+                            conf_r=float(cf_r[i]),
+                            keypoint_confidence=kp_conf,
+                            geometry=geom,
+                            qcfg=qcfg,
+                            speed_result=(False, speed),
+                        )
+                    else:
+                        verdict.metrics["speed_mm_s"] = float(speed)
+                        filtered_xyz = smoother.update(name, raw_xyz, t_filter_s)
+                        epi = float(geom["epipolar_error_px"])
+                        rep = float(geom["reprojection_error_max_px"])
+                        quality = JointQuality(
+                            score=float(verdict.metrics["score"]),
+                            epipolar_error_px=epi,
+                            reprojection_error_mean_px=float(geom["reprojection_error_mean_px"]),
+                            reprojection_error_max_px=rep,
+                            speed_mm_s=float(speed),
+                        )
+                        joint = FilteredJoint3D(
+                            joint_name=name,
+                            xyz_mm=[float(x) for x in filtered_xyz],
+                            xyz_raw_mm=[float(x) for x in raw_xyz],
+                            quality=quality,
+                            confidence_left=float(cf_l[i]),
+                            confidence_right=float(cf_r[i]),
+                            uv_left=(float(pts_l[i][0]), float(pts_l[i][1])),
+                            uv_right=(float(pts_r[i][0]), float(pts_r[i][1])),
+                            rectified_uv_left=(float(geom["rectified_uv_left"][0]), float(geom["rectified_uv_left"][1])),
+                            rectified_uv_right=(float(geom["rectified_uv_right"][0]), float(geom["rectified_uv_right"][1])),
+                        )
+                        joints[name] = joint
 
-                    filtered_xyz = smoother.update(name, raw_xyz, t_filter_s)
-
-                    quality = JointQuality(
-                        score=score,
-                        epipolar_error_px=epi,
-                        reprojection_error_mean_px=float(geom["reprojection_error_mean_px"]),
-                        reprojection_error_max_px=rep,
-                        speed_mm_s=float(speed),
-                    )
-                    joint = FilteredJoint3D(
-                        joint_name=name,
-                        xyz_mm=[float(x) for x in filtered_xyz],
-                        xyz_raw_mm=[float(x) for x in raw_xyz],
-                        quality=quality,
-                        confidence_left=float(cf_l[i]),
-                        confidence_right=float(cf_r[i]),
-                        uv_left=(float(pts_l[i][0]), float(pts_l[i][1])),
-                        uv_right=(float(pts_r[i][0]), float(pts_r[i][1])),
-                        rectified_uv_left=(float(geom["rectified_uv_left"][0]), float(geom["rectified_uv_left"][1])),
-                        rectified_uv_right=(float(geom["rectified_uv_right"][0]), float(geom["rectified_uv_right"][1])),
-                    )
-                    joints[name] = joint
+                coarse = aggregate_bucket(verdict.state)
+                if coarse:
+                    rejected[coarse] += 1
+                verdicts.append(verdict)
 
             mean_epi = float(np.mean(current_epi)) if current_epi else None
             mean_reproj = float(np.mean(current_reproj)) if current_reproj else None
+
+            accepted_count = sum(1 for v in verdicts if v.accepted)
+            fine_aggregate = {}
+            for v in verdicts:
+                if not v.accepted:
+                    fine_aggregate[v.state] = fine_aggregate.get(v.state, 0) + 1
+
+            diagnostics = FrameDiagnostics(
+                selected_joint_count=len(verdicts),
+                accepted_count=accepted_count,
+                rejected_count=len(verdicts) - accepted_count,
+                joints=verdicts,
+                aggregate=fine_aggregate,
+            )
 
             timing = FrameTiming.from_dict(pair_timing)
             frame = PoseFrame(
@@ -342,8 +427,12 @@ def run(args, cfg):
                     "mean_reprojection_error_px": mean_reproj,
                 },
                 joints=joints,
+                diagnostics=diagnostics,
             )
             publisher.publish(to_v1_message(frame))
+
+            if diagnostics_enabled and frame_index % diag_every == 0:
+                print(format_diagnostic_summary(frame_index, diagnostics))
 
             vl, vr = resize_pair(res_l.plot(), res_r.plot())
             canvas = cv2.hconcat([vl, vr])
@@ -363,7 +452,7 @@ def run(args, cfg):
                 f"Stereo RMS={rms} | epi={epi_txt} | reproj={rep_txt}",
                 f"host grab skew={skew_txt} (not exposure skew) | smoothing={'ON' if smoother.enabled else 'OFF'}",
                 f"OneEuro min_cutoff={smoother.min_cutoff:g} beta={smoother.beta:g} d_cutoff={smoother.d_cutoff:g}",
-                "C=calibrate   F=filter on/off   G=cleanup   P=pin calib   Q/ESC=quit",
+                f"C=calibrate  F=filter  G=cleanup  P=pin  D=diag{' ON' if diagnostics_enabled else ''}  V=validate  Q/ESC=quit",
             ])
             cv2.imshow("Stereo Pose 3D", canvas)
             key = cv2.waitKey(1) & 0xFF
@@ -392,6 +481,16 @@ def run(args, cfg):
                         print(f"[calibration] pin failed: {e}")
                 else:
                     print("[calibration] no active calibration to pin")
+            elif key in (ord("d"), ord("D")):
+                diagnostics_enabled = not diagnostics_enabled
+                print(f"[diagnostics] per-joint view {'ON' if diagnostics_enabled else 'OFF'}")
+            elif key in (ord("v"), ord("V")):
+                if triangulator is None:
+                    print("[validation] no active calibration; run calibration first (C -> R)")
+                else:
+                    _run_metric_validation(
+                        triangulator, fl, fr, s, runtime_root, calib_path
+                    )
             elif key in (ord("q"), 27):
                 break
 

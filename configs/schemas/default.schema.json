@@ -13,6 +13,7 @@
     "smoothing",
     "cleanup",
     "output",
+    "diagnostics",
     "runtime"
   ],
   "additionalProperties": true,
@@ -130,6 +131,13 @@
         "root": { "type": "string", "minLength": 1 },
         "show_preview": { "type": "boolean" },
         "log_dir": { "type": "string", "minLength": 1 }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "every_n_frames": { "type": "integer", "minimum": 1 }
       }
     }
   }

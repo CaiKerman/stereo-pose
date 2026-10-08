@@ -86,6 +86,10 @@ DEFAULT_CONFIG: dict = {
         "jsonl_file": None,
         "udp": {"enabled": False, "host": "127.0.0.1", "port": 5005},
     },
+    "diagnostics": {
+        "enabled": False,
+        "every_n_frames": 10,
+    },
     "runtime": {
         "root": "runtime",
         "show_preview": True,
@@ -102,6 +106,7 @@ REQUIRED_SECTIONS = [
     "smoothing",
     "cleanup",
     "output",
+    "diagnostics",
     "runtime",
 ]
 
@@ -287,6 +292,10 @@ def validate_config(cfg: dict) -> None:
         _bool(udp.get("enabled"), "output.udp.enabled", errors)
         _str(udp.get("host"), "output.udp.host", errors)
         _int(udp.get("port"), "output.udp.port", errors, lo=1, hi=65535)
+
+    d = cfg.get("diagnostics", {})
+    _bool(d.get("enabled"), "diagnostics.enabled", errors)
+    _int(d.get("every_n_frames"), "diagnostics.every_n_frames", errors, lo=1)
 
     r = cfg.get("runtime", {})
     _str(r.get("root"), "runtime.root", errors)

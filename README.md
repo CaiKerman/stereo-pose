@@ -12,6 +12,8 @@ Current work is always declared in [CURRENT_TASK.md](CURRENT_TASK.md).
 
 - Task 001 (baseline freeze + engineering foundation) — see
   [docs/instructions/001_BASELINE_ENGINEERING.md](docs/instructions/001_BASELINE_ENGINEERING.md).
+- Task 002 (metric validation + joint rejection diagnostics) — see
+  [docs/instructions/002_METRIC_VALIDATION_DIAGNOSTICS.md](docs/instructions/002_METRIC_VALIDATION_DIAGNOSTICS.md).
 
 ## For coding agents
 
@@ -130,6 +132,7 @@ The future world coordinate system will require:
 - [docs/architecture/DATA_FLOW.md](docs/architecture/DATA_FLOW.md) — pipeline data flow
 - [docs/protocols/POSE_MESSAGE_V1.md](docs/protocols/POSE_MESSAGE_V1.md) — output message contract
 - [docs/calibration/STEREO_CALIBRATION.md](docs/calibration/STEREO_CALIBRATION.md) — calibration artifact + policy
+- [docs/validation/METRIC_VALIDATION.md](docs/validation/METRIC_VALIDATION.md) — checkerboard 3D metric validation procedure
 - [MIGRATION_NOTES.md](MIGRATION_NOTES.md) — v1.2 → formal migration notes
 
 ## Collaboration

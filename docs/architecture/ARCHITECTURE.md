@@ -19,11 +19,12 @@ Each subsystem is a Python subpackage under `src/stereo_pose/`:
 | `calibration/` | Collect stable checkerboard pairs and solve stereo calibration | `RuntimeCalibration`, `newest_calibration`, `load_calibration_metadata`, `validate_calibration_compatibility` |
 | `pose/` | YOLO Pose inference and device resolution | `PoseEstimator`, `resolve_device` |
 | `geometry/` | Rectified triangulation + error metrics | `StereoTriangulator` |
-| `quality/` | Measurement quality score and accept/reject gates | `evaluate_measurement`, `heuristic_quality_score`, `TemporalSpeedGate` |
+| `quality/` | Measurement quality score, accept/reject gates, and per-joint rejection classification | `evaluate_measurement`, `heuristic_quality_score`, `TemporalSpeedGate`, `classify_joint`, `aggregate_bucket` |
 | `filtering/` | One Euro temporal smoothing | `OneEuroVectorFilter`, `JointSmoother` |
+| `validation/` | Checkerboard 3D metric validation + JSON report persistence | `compute_metric_validation`, `normalize_correspondence`, `compute_metrics_from_triangulations`, `save_validation_report` |
 | `coordinates/` | Rigid-transform math scaffold | `RigidTransform` |
 | `outputs/` | Publishers and `stereo_pose_3d/v1.2` adapter | `build_publisher`, `to_v1_message` |
-| `diagnostics/` | Structured logging + offline doctor | `configure_logging`, `doctor.main` |
+| `diagnostics/` | Structured logging, offline doctor, per-joint summary formatter | `configure_logging`, `doctor.main`, `format_diagnostic_summary` |
 | `persistence/` | Runtime artifact cleanup within managed roots + promote to saved library | `cleanup_project`, `promote_calibration`, `auto_dir`, `saved_dir` |
 | `app/` | Live pipeline orchestration + visualization | `app.runner.run` |
 
@@ -47,6 +48,10 @@ filtered, coordinate system, units, timestamps, and quality:
 - `StereoCalibrationMetadata` — calibration NPZ metadata.
 - `CoordinateTransformMetadata` — transform description.
 - `PoseFrame` — assembled per-frame output.
+- `JointRejection` — per-joint, per-frame terminal classification (one of the
+  fine-grained `RejectionReason` states, plus numeric evidence).
+- `FrameDiagnostics` — structured per-frame joint diagnostics (internal only,
+  not on the `stereo_pose_3d/v1.2` wire).
 
 ## Configuration
 

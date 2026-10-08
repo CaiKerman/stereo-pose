@@ -111,6 +111,51 @@ class FilteredJoint3D:
 
 
 @dataclass
+class JointRejection:
+    """Per-joint, per-frame terminal classification.
+
+    Exactly one terminal ``state`` (a :class:`stereo_pose.quality.RejectionReason`
+    string). ``detail`` is a compact human/machine-readable reason and
+    ``metrics`` holds the numeric evidence available up to the failing stage.
+    """
+
+    joint_name: str
+    state: str
+    accepted: bool
+    detail: str = ""
+    metrics: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "joint": self.joint_name,
+            "state": self.state,
+            "accepted": self.accepted,
+            "detail": self.detail,
+            "metrics": self.metrics,
+        }
+
+
+@dataclass
+class FrameDiagnostics:
+    """Structured per-frame joint diagnostics (internal, not on the v1.2 wire)."""
+
+    selected_joint_count: int = 0
+    accepted_count: int = 0
+    rejected_count: int = 0
+    joints: list = field(default_factory=list)
+    aggregate: Dict[str, int] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "selected_joint_count": self.selected_joint_count,
+            "accepted_count": self.accepted_count,
+            "rejected_count": self.rejected_count,
+            "joints": [j.to_dict() for j in self.joints],
+            "aggregate": self.aggregate,
+        }
+
+
+@dataclass
 class StereoCalibrationMetadata:
     """Metadata attached to a versioned stereo calibration NPZ artifact.
 
@@ -189,3 +234,4 @@ class PoseFrame:
     filtering: Dict[str, Any]
     frame_quality: Dict[str, Any]
     joints: Dict[str, FilteredJoint3D] = field(default_factory=dict)
+    diagnostics: Optional[FrameDiagnostics] = None
