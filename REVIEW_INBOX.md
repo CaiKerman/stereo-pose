@@ -223,3 +223,23 @@ Owner specifically requested:
 
 **Completion conditions:** mark OPEN -> RESOLVED only when snapshot export, offline replay, M panel, tests and documentation are committed. State clearly that real S snapshot still needs owner acceptance.
 
+
+
+## Task 002B — Reviewer round 1 (2026-10-08)
+
+**Status: CHANGES REQUESTED — do not merge.**
+**PR feedback:** https://github.com/CaiKerman/stereo-pose/pull/3#issuecomment-6057978607
+**Reviewed head:** `5b69259da10848715af18ff776c3e8b9c367b213`
+
+Positive: `S` integrates the current stereo frames and pose outputs without another read/inference; snapshot includes paired raw+annotated images, self-contained geometry+JSON; `M` overlay implemented; no v1.2 measurement thresholds or topology altered.
+
+Resolve before user real-S testing:
+
+- [ ] **B1 — RAW DATA LOSS** in `diagnostics/snapshot.py`: `confidence=0.0` causes both original uv and confidence to become null; preserve observed numeric keypoints/confidence (including zeros), distinguish missing vs low confidence, sanitize non-finite uv in annotated image.
+- [ ] **B2 — OFFLINE REPLAY ROBUSTNESS** in `tools/inspect_snapshot.py`: formatting missing signed residual with `:11.4f` throws; handle null/incomplete/corrupt data with interpretable errors and exit codes. Test negative cases and UV replay agreement.
+- [ ] **B3 — MISSING HANDOFF**: update Chinese `README_先看我.txt`, README, CHANGE_SUMMARY, TEST_REPORT (currently stale 181 Task002A tests), this REVIEW_INBOX, and PR #3 body. No CI run on latest PR head was found; report own test execution precisely, never misclaim hardware validation.
+- [ ] **B4 — MISLEADING FPS / HIDDEN ALARMS**: `pair_cycle_ms` measures capture only, not full inference-loop fps. Fix or relabel; expanded M menu must also show critical warnings.
+- [ ] Fix ineffective in-place raw-frame mutation test (compares objects never passed into snapshot call), and add targeted tests confirming no second camera read/YOLO run on S.
+- [ ] Make failed snapshot writes unambiguously incomplete or remove only newly created partial directory safely; never affect historical snapshots.
+
+Keep existing `trae/agent-c3dfMx` / PR #3, preserve NPZ calibration and all acceptance gates, no new branches/PRs or merges. After corrections and documented tests, push once and wait for GPT round-2 review.
