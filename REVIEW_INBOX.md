@@ -2,7 +2,7 @@
 
 ## Task 002 — Review round 1
 
-Status: **CODE REVIEW ACCEPTED — pending real-hardware validation**
+Status: **OPEN — owner-requested camera selection required before hardware validation**
 
 This file is the repository-visible authoritative mirror of actionable review feedback for Task 002.
 
@@ -94,3 +94,28 @@ Before merge, perform real-hardware acceptance:
 4. confirm restart/load behavior remains intact.
 
 Do not merge until those two live paths are exercised.
+
+**Owner update 2026-10-08:** The real-hardware test is additionally blocked by the multi-camera selection task below. Do not run D/V acceptance until camera selection is implemented and reviewed.
+
+
+## Task 002A — Multi-camera selection on 3-camera laptop (OWNER REQUEST, PRE-TEST BLOCKER)
+
+**Status: OPEN — implementation required before real-hardware D/V testing.**
+
+The test laptop has **one integrated camera + two USB webcams**. The user must be able to **visually identify all available feeds and select distinct LEFT and RIGHT USB webcams** without Git, manual camera index editing, or pip installation.
+
+**Read the full implementation contract:**
+
+`docs/instructions/002A_CAMERA_SELECTION_PRETEST.md`
+
+Minimum acceptance:
+
+1. `RUN_ME.bat` opens a friendly camera discovery/preview/selection step before starting main stereo tracking; visually labeled CAM indexes, Rescan and Cancel; a 3-device setup lets user choose LEFT=1 and RIGHT=2 (or other actual indexes).
+2. Only frame-delivering cameras selectable, no duplicate LEFT=RIGHT; robust failures, hotplug, sparse indexes; every temporary camera handle released before tracking.
+3. Confirmed choice persisted safely to local config.json with unrelated config fields intact; cancel never changes config; noninteractive and CLI overrides preserved.
+4. Preserve physical camera/calibration safety: on index mismatch or uncertain pairing issue a prominent calibration compatibility warning; do not delete/overwrite an existing NPZ or pretend numerical index identity proves physical camera identity.
+5. No external dependencies, automatic pip, new GUI framework, or numerical quality threshold changes.
+6. Deterministic tests + user documentation + update CHANGE_SUMMARY / TEST_REPORT / REVIEW_FOR_OWNERS.
+7. Push changes to **this existing PR #2** and mark this item **RESOLVED — pending reviewer re-review**. **Do not merge.**
+
+Reviewer will approve this incremental pretest change, then owner will run D and V using the two selected external webcams. Do not start Task 003 yet.
