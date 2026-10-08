@@ -26,6 +26,7 @@ from stereo_pose.filtering import JointSmoother
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, resolve_joints
 from stereo_pose.diagnostics.joint_diagnostics import format_diagnostic_summary
+from stereo_pose.diagnostics.snapshot import SnapshotPose, save_snapshot
 from stereo_pose.models import FilteredJoint3D, FrameDiagnostics, FrameTiming, JointQuality, PoseFrame
 from stereo_pose.outputs import build_publisher
 from stereo_pose.outputs.v1_message import to_v1_message
@@ -57,6 +58,50 @@ def overlay_status(img, lines):
         )
         y += 25
     return img
+
+
+def build_menu_lines(
+    menu_expanded,
+    *,
+    camera_left,
+    camera_right,
+    device,
+    cal_state,
+    accepted_total,
+    selected_total,
+    rejected_total,
+    fps_txt,
+    rms_txt,
+    epi_txt,
+    reproj_txt,
+    skew_txt,
+    smooth_txt,
+    one_euro_min,
+    one_euro_beta,
+    one_euro_d,
+    alarms,
+):
+    """Return the status lines to draw for the tracking overlay.
+
+    Collapsed (default) keeps only camera indexes, calibration state, accepted
+    joint count, FPS, live alarms and a compact ``M: Developer tools`` hint.
+    Expanded adds the full hotkey row and smoothing internals. Warnings are
+    always prepended so no important alarm is hidden when collapsed.
+    """
+    if not menu_expanded:
+        lines = [
+            f"LEFT={camera_left}  RIGHT={camera_right} | {cal_state} | "
+            f"joints={accepted_total}/{selected_total} | {fps_txt} | M: Developer tools",
+        ]
+        return list(alarms) + lines
+    return [
+        f"TRACKING | device={device} | {cal_state} | "
+        f"accepted={accepted_total}/{selected_total} rejected={rejected_total} | {fps_txt}",
+        f"Stereo RMS={rms_txt} | epi={epi_txt} | reproj={reproj_txt}",
+        f"host grab skew={skew_txt} (not exposure skew) | {smooth_txt}",
+        f"OneEuro min_cutoff={one_euro_min:g} beta={one_euro_beta:g} d_cutoff={one_euro_d:g}",
+        "S=snapshot  D=joint reasons  V=validate  C=calibrate  P=pin  G=cleanup  F=smoothing  M=collapse  Q/ESC=quit",
+    ]
 
 
 def _capture_image_size(left, right, requested):
@@ -243,7 +288,7 @@ def run(args, cfg):
     )
     print(
         "Hotkeys: C=calibration | F=smoothing on/off | G=cleanup | P=pin calib | "
-        "D=diagnostics | V=validate board | Q/ESC=quit"
+        "D=diagnostics | V=validate board | S=snapshot | M=dev menu | Q/ESC=quit"
     )
     print("Calibration: AUTO waits for STABLE | SPACE=manual force capture | R=solve | X=discard | C=return\n")
 
@@ -252,6 +297,7 @@ def run(args, cfg):
     alternate_grab = bool(c.get("alternate_grab_order", True))
     diagnostics_enabled = bool(d.get("enabled", False))
     diag_every = max(1, int(d.get("every_n_frames", 10)))
+    menu_expanded = False
 
     try:
         while True:
@@ -327,8 +373,8 @@ def run(args, cfg):
                 continue
 
             res_l, res_r = estimator.infer_pair(fl, fr)
-            pts_l, cf_l = estimator.best_person_keypoints(res_l)
-            pts_r, cf_r = estimator.best_person_keypoints(res_r)
+            pts_l, cf_l, chosen_l, count_l = estimator.best_person(res_l)
+            pts_r, cf_r, chosen_r, count_r = estimator.best_person(res_r)
 
             joints = {}
             rejected = {
@@ -480,13 +526,37 @@ def run(args, cfg):
             skew_txt = "n/a" if skew is None else f"{skew:.2f}ms"
             rej_total = sum(rejected.values())
 
-            overlay_status(canvas, [
-                f"TRACKING | device={device} | accepted={len(joints)} rejected={rej_total}",
-                f"Stereo RMS={rms} | epi={epi_txt} | reproj={rep_txt}",
-                f"host grab skew={skew_txt} (not exposure skew) | smoothing={'ON' if smoother.enabled else 'OFF'}",
-                f"OneEuro min_cutoff={smoother.min_cutoff:g} beta={smoother.beta:g} d_cutoff={smoother.d_cutoff:g}",
-                f"C=calibrate  F=filter  G=cleanup  P=pin  D=diag{' ON' if diagnostics_enabled else ''}  V=validate  Q/ESC=quit",
-            ])
+            cal_state = "calib=OK" if triangulator is not None else "calib=NONE"
+            cycle = pair_timing.get("pair_cycle_ms")
+            fps_txt = "n/a" if not cycle else f"{1000.0 / float(cycle):.0f}fps"
+            smooth_txt = "F:smoothing ON" if smoother.enabled else "F:smoothing OFF"
+
+            alarms = []
+            if triangulator is None:
+                alarms.append("! no stereo calibration loaded (C -> R)")
+            if mean_epi is not None and mean_epi > 3.0:
+                alarms.append(f"! mean epipolar {mean_epi:.1f}px > 3px gate")
+
+            overlay_status(canvas, build_menu_lines(
+                menu_expanded,
+                camera_left=c["left"],
+                camera_right=c["right"],
+                device=device,
+                cal_state=cal_state,
+                accepted_total=len(joints),
+                selected_total=len(verdicts),
+                rejected_total=rej_total,
+                fps_txt=fps_txt,
+                rms_txt=rms,
+                epi_txt=epi_txt,
+                reproj_txt=rep_txt,
+                skew_txt=skew_txt,
+                smooth_txt=smooth_txt,
+                one_euro_min=smoother.min_cutoff,
+                one_euro_beta=smoother.beta,
+                one_euro_d=smoother.d_cutoff,
+                alarms=alarms,
+            ))
             cv2.imshow("Stereo Pose 3D", canvas)
             key = cv2.waitKey(1) & 0xFF
 
@@ -524,6 +594,46 @@ def run(args, cfg):
                     _run_metric_validation(
                         triangulator, fl, fr, s, runtime_root, calib_path
                     )
+            elif key in (ord("m"), ord("M")):
+                menu_expanded = not menu_expanded
+                print(f"[menu] developer overlay {'expanded' if menu_expanded else 'collapsed'}")
+            elif key in (ord("s"), ord("S")):
+                try:
+                    snap_left = SnapshotPose(
+                        detections=int(count_l),
+                        chosen_person_index=chosen_l,
+                        keypoints=pts_l,
+                        confidence=cf_l,
+                    )
+                    snap_right = SnapshotPose(
+                        detections=int(count_r),
+                        chosen_person_index=chosen_r,
+                        keypoints=pts_r,
+                        confidence=cf_r,
+                    )
+                    snap_dir = save_snapshot(
+                        runtime_root=runtime_root,
+                        frame_index=frame_index,
+                        wall_timestamp_ns=wall_timestamp_ns,
+                        pair_timing=pair_timing,
+                        camera_left=c["left"],
+                        camera_right=c["right"],
+                        backend=c["backend"],
+                        requested_size=(int(c["width"]), int(c["height"])),
+                        actual_size=active_size,
+                        frame_left=fl,
+                        frame_right=fr,
+                        pose_left=snap_left,
+                        pose_right=snap_right,
+                        selected_joints=selected_joints,
+                        verdicts=verdicts,
+                        triangulator=triangulator,
+                        calib_path=calib_path,
+                    )
+                    print(f"[snapshot] saved -> {snap_dir}")
+                    print(f"[snapshot] offline replay: python tools/inspect_snapshot.py {snap_dir}")
+                except Exception as e:  # noqa: BLE001 — snapshot must never crash tracking
+                    print(f"[snapshot] FAILED: {e}")
             elif key in (ord("q"), 27):
                 break
 
