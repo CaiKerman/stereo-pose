@@ -22,16 +22,16 @@ source-path bootstrap and cannot import `stereo_pose`.
 
 ## Results
 
-Latest full-suite run (after Task 002B implementation + round-1 review fixes):
+Latest full-suite run (after Task 002B round-2 B5 fix):
 
-- Ran: 210 tests
-- Passed: 210
+- Ran: 214 tests
+- Passed: 214
 - Failed: 0
 - Skipped: 0
-- Duration: ~2.2s (pytest)
+- Duration: ~3.2s (pytest)
 
-Task 002B snapshot/debug-menu tests: 29 (`tests/unit/test_snapshot.py`,
-`python -m pytest tests/unit/test_snapshot.py -q` → 29 passed). All other
+Task 002B snapshot/debug-menu tests: 33 (`tests/unit/test_snapshot.py`,
+`python -m pytest tests/unit/test_snapshot.py -q` → 33 passed). All other
 181 tests (Task 001 + 002 + 002A) are unchanged and still pass.
 
 `test_rejects_symlink_escape` now runs and passes on this platform (Linux,
@@ -55,13 +55,14 @@ where symlinks need elevation). Test totals by area:
 - PR #3 round 2: 5 tests — `probe_max_index` bounded to 0..9 (B3) and
   fail-closed camera selection (`TestFailClosed`: RUN_ME and CLI `--camera-pick`
   never start tracking on cancel or failure; B1).
-- Task 002B: 29 tests (`tests/unit/test_snapshot.py`) — see the coverage
+- Task 002B: 33 tests (`tests/unit/test_snapshot.py`) — see the coverage
   table below; includes the round-1 review fixes (B1 raw-evidence
   preservation, B2 replay robustness/exit codes, B4 full-loop FPS +
   expanded-menu alarms, atomic staged writes, effective mutation test,
-  S-purity/no-second-read/no-YOLO).
+  S-purity/no-second-read/no-YOLO) and the round-2 B5 distortion-vector
+  shape tests.
 
-## Environment (latest run — Task 002B round-1 fixes)
+## Environment (latest run — Task 002B round-2 fix)
 
 - OS: Linux (container sandbox)
 - Python: 3.14.4 (CPython)
@@ -137,6 +138,10 @@ Python 3.10.11, pytest 9.1.1, NumPy 2.2.6, OpenCV 4.13.0.
 | B4 — collapsed menu keeps alarms + hint | `TestMenuLines::test_collapsed_keeps_warnings_and_hint` |
 | B4 — expanded menu shows full-loop fps + separate grab period | `TestMenuLines::test_expanded_has_hotkeys_and_internals` |
 | B4 — expanded menu also prepends live alarms | `TestMenuLines::test_expanded_also_prepends_alarms` |
+| B5 — real OpenCV `(1,5)` row-vector distortion replays end-to-end | `TestRealOpenCVDistortionShape::test_row_vector_d_1x5_replays` |
+| B5 — `(5,1)` column-vector distortion replays end-to-end | `TestRealOpenCVDistortionShape::test_column_vector_d_5x1_replays` |
+| B5 — flat `(5,)` distortion remains accepted | `TestRealOpenCVDistortionShape::test_flat_d_vector_still_replays` |
+| B5 — true `(2,5)` matrix distortion still rejected (exit 1) | `TestRealOpenCVDistortionShape::test_true_2d_distortion_matrix_rejected` |
 
 ## Untested hardware/physical paths
 

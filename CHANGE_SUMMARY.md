@@ -279,10 +279,26 @@
 ### Known issues
 
 - The live `S`/`M` paths were NOT exercised on real hardware in this
-  environment (no cameras/model weights); they are covered by the 29
+  environment (no cameras/model weights); they are covered by the 33
   deterministic tests (injected synthetic frames/poses/geometry). Real-rig
   owner acceptance is still pending — see TEST_REPORT.md and
   REVIEW_INBOX.md.
+
+### Review round 2 (B5 — real distortion arrays)
+
+- `tools/inspect_snapshot.py::_load_calibration` no longer requires a 1-D
+  distribution vector: it now accepts the `(1, N)` row vector (and `(N, 1)`
+  column vector) that real `cv2.calibrateCamera` / `cv2.stereoCalibrate`
+  produce in `calibration/collection.py`, normalizing accepted row/column
+  vectors to a flat 1-D vector before `cv2.undistortPoints`. A genuine 2-D
+  matrix (`(2, 5)`) is still rejected with exit 1. No calibration file,
+  geometry, or quality threshold was changed — the fix is confined to the
+  offline replay tool.
+- Tests: `TestRealOpenCVDistortionShape` in `tests/unit/test_snapshot.py`
+  (`(1,5)` and `(5,1)` each round-trip the full snapshot-write → offline-replay
+  path with exit 0, asserting the saved NPZ preserved the real distortion
+  shape; flat `(5,)` still replays; `(2,5)` still rejected). Full suite
+  grew from 210 to 214 tests.
 
 ---
 

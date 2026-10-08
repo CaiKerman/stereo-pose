@@ -485,6 +485,59 @@ class TestOfflineReplayRobustness(unittest.TestCase):
         self.assertIn("not a directory", proc.stderr)
 
 
+class TestRealOpenCVDistortionShape(unittest.TestCase):
+    """Review round 2 B5: real cv2.calibrateCamera / cv2.stereoCalibrate return
+    distortion coefficients as a (1, 5) row vector; column vectors (5, 1) are
+    equally valid OpenCV output. The snapshot-write -> offline-replay round
+    trip must accept both, exactly like the live pipeline does."""
+
+    def _roundtrip(self, d_shape):
+        cal = _calibration()
+        cal["D1"] = np.zeros(d_shape, dtype=float)
+        cal["D2"] = np.zeros(d_shape, dtype=float)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = _save(Path(tmp), triangulator=StereoTriangulator(cal))
+            # The saved NPZ preserves the real OpenCV distortion shape.
+            saved = np.load(dest / "calibration_snapshot.npz")
+            self.assertEqual(saved["D1"].shape, d_shape)
+            self.assertEqual(saved["D2"].shape, d_shape)
+            return _run_cli(dest)
+
+    def test_row_vector_d_1x5_replays(self):
+        proc = self._roundtrip((1, 5))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("replayed 2 joint(s); 0 mismatch(es)", proc.stdout)
+
+    def test_column_vector_d_5x1_replays(self):
+        proc = self._roundtrip((5, 1))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("replayed 2 joint(s); 0 mismatch(es)", proc.stdout)
+
+    def test_flat_d_vector_still_replays(self):
+        # A flat (5,) vector (the synthetic test geometry) remains accepted.
+        proc = self._roundtrip((5,))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("replayed 2 joint(s); 0 mismatch(es)", proc.stdout)
+
+    def test_true_2d_distortion_matrix_rejected(self):
+        # A (2, 5) matrix is NOT a valid OpenCV distortion vector and must
+        # still be rejected with exit 1 (never silently accepted). Rewrite the
+        # saved NPZ in place so _load_calibration is exercised directly,
+        # independent of how the live write path handles a bogus distortion
+        # shape.
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = _save(Path(tmp), triangulator=StereoTriangulator(_calibration()))
+            with np.load(dest / "calibration_snapshot.npz") as loaded:
+                fields = {k: loaded[k] for k in loaded.files}
+            fields["D1"] = np.zeros((2, 5), dtype=float)
+            fields["D2"] = np.zeros((2, 5), dtype=float)
+            np.savez(dest / "calibration_snapshot.npz", **fields)
+            proc = _run_cli(dest)
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("distortion (row/column) vector", proc.stderr)
+            self.assertNotIn("Traceback", proc.stderr)
+
+
 class TestSnapshotPurity(unittest.TestCase):
     """Review follow-up: pressing S must reuse the already-captured frame pair
     and the already-completed pose inference — never a second camera read and

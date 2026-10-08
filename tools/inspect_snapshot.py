@@ -88,7 +88,26 @@ def _load_calibration(snapshot_dir: Path):
             )
     for key in ("D1", "D2"):
         d = bundle[key]
-        if d.ndim != 1 or not 4 <= d.size <= 8:
+        # Review round 2 B5: real cv2.calibrateCamera / cv2.stereoCalibrate
+        # return distortion coefficients as a (1, N) row vector (and column
+        # vectors (N, 1) are equally valid OpenCV output). Accept flat, row,
+        # and column vectors alike by first rejecting anything 2D that is not
+        # a true row/column vector, then normalizing to a flat 1-D vector so
+        # cv2.undistortPoints sees a canonical shape downstream.
+        if d.ndim == 2:
+            if 1 not in d.shape:
+                raise ReplayError(
+                    f"invalid calibration geometry: {key} has shape {d.shape}, "
+                    f"expected a 4..8 coefficient distortion (row/column) vector"
+                )
+            d = d.ravel()
+            bundle[key] = d
+        elif d.ndim != 1:
+            raise ReplayError(
+                f"invalid calibration geometry: {key} has shape {d.shape}, "
+                f"expected a 4..8 coefficient distortion vector"
+            )
+        if not 4 <= d.size <= 8:
             raise ReplayError(
                 f"invalid calibration geometry: {key} has shape {d.shape}, "
                 f"expected a 4..8 coefficient distortion vector"

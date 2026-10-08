@@ -339,7 +339,7 @@ Keep existing `trae/agent-c3dfMx` / PR #3, preserve NPZ calibration and all acce
 
 ## Task 002B — Reviewer round 2 (2026-10-08)
 
-**Status: CHANGES REQUESTED — B5 confirmed physical-calibration incompatibility. No merge or owner real-S test yet.**
+**Status: RESOLVED — B5 fixed and pushed on `trae/agent-c3dfMx`; awaiting final GPT verification. No merge or owner real-S test yet.**
 
 **PR review:** https://github.com/CaiKerman/stereo-pose/pull/3#issuecomment-6061646573
 **Reviewed:** `dae10c2b9c99e57cd36915dff4fbc3141cc7718d`
@@ -349,7 +349,32 @@ Keep existing `trae/agent-c3dfMx` / PR #3, preserve NPZ calibration and all acce
 - [x] B3 source docs and full suite report: `210 passed` self-reported on Linux 3.14.4, no independent CI.
 - [x] B4 real full-loop FPS separate from camera grab-only time; alarms in both M views.
 - [x] Staging/partial save and no-repeat camera read/inference tests.
-- [ ] **B5 BLOCKER: real distortion arrays**: `tools/inspect_snapshot.py::_load_calibration` requires D1/D2 to be 1D, but real `cv2.calibrateCamera/stereoCalibrate` invoked by `calibration/collection.py` returns valid `D1.shape=(1,5)` and `D2.shape=(1,5)` (reproduced on OpenCV 4.13.0). Existing tests use synthetic `np.zeros(5)` and mask the problem. Accept OpenCV valid row/column vectors and test full snapshot-write→offline-replay using `(1,5)` and `(5,1)`. Do NOT change calibration files or quality thresholds. Required for real owner snapshots to replay successfully.
-- [ ] Update **PR #3 body**: currently stale 176-test 002A-only summary despite 210-test 002B records.
-- [ ] After only targeted B5 fix and updated tests/docs, push to existing `trae/agent-c3dfMx` / PR #3 and stop for brief GPT verification. No merge, no new branches or PRs.
+- [x] **B5 BLOCKER: real distortion arrays**: `tools/inspect_snapshot.py::_load_calibration` requires D1/D2 to be 1D, but real `cv2.calibrateCamera/stereoCalibrate` invoked by `calibration/collection.py` returns valid `D1.shape=(1,5)` and `D2.shape=(1,5)` (reproduced on OpenCV 4.13.0). Existing tests use synthetic `np.zeros(5)` and mask the problem. Accept OpenCV valid row/column vectors and test full snapshot-write→offline-replay using `(1,5)` and `(5,1)`. Do NOT change calibration files or quality thresholds. Required for real owner snapshots to replay successfully.
+
+  Resolution: `_load_calibration` now accepts a flat `(N,)`, row `(1, N)`,
+  and column `(N, 1)` distortion vector — it rejects any 2-D array that is
+  not a true row/column vector and normalizes accepted row/column vectors to
+  a flat 1-D vector before `compute_epipolar` passes them to
+  `cv2.undistortPoints`. No calibration file, geometry, or quality threshold
+  was modified; the change is confined to the offline replay tool. Tests:
+  `TestRealOpenCVDistortionShape` — `(1,5)` and `(5,1)` each round-trip the
+  full snapshot-write → offline-replay path with exit 0 and matching rectified
+  geometry (asserting the saved NPZ preserved the real distortion shape), the
+  flat `(5,)` shape still replays, and a true `(2,5)` matrix is still rejected
+  with exit 1 (never accepted silently).
+
+- [x] Update **PR #3 body**: body refreshed to reflect the full Task 002B
+  scope and the current 214-test suite (the stale 176-test 002A-only summary
+  is gone).
+
+Test execution for this round (exact, deterministic, no CI claimed):
+
+- `python -m pytest tests/unit/test_snapshot.py -q` → 33 passed
+- `python -m pytest tests/ -q` (full suite) → **214 passed, 0 failed, 0 skipped**
+  (~3.2s, Linux container, Python 3.14.4, NumPy 2.5.3, OpenCV 5.0.0
+  headless; torch/ultralytics/CUDA/cameras NOT installed — see TEST_REPORT.md).
+- No live-camera or real-`S` hardware validation was performed in this
+  environment and none is claimed (owner acceptance still pending).
+
+- [x] After only targeted B5 fix and updated tests/docs, push to existing `trae/agent-c3dfMx` / PR #3 and stop for brief GPT verification. No merge, no new branches or PRs.
 
