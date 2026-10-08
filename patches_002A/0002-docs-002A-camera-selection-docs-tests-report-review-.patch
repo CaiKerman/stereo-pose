@@ -1,0 +1,501 @@
+From 71fd04cebf0676e3d7b62e17a42fb9c71431fb21 Mon Sep 17 00:00:00 2001
+From: CaiKerman <CaiKerman@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 05:40:48 +0000
+Subject: [PATCH 2/2] docs: 002A camera selection docs, tests report, review
+ artifacts
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- README_先看我.txt: visual LEFT/RIGHT picking steps, calibration-identity
+  reminder, 3-camera manual acceptance checklist
+- TEST_REPORT.md: 176/176 suite results, 002A section-E coverage table,
+  updated environment; symlink test now deterministic and running
+- CHANGE_SUMMARY.md / REVIEW_FOR_OWNERS.md / REVIEW_INBOX.md: 002A
+  implementation summary, decisions, risks; inbox item marked RESOLVED
+  pending re-review
+- DATA_FLOW.md / ARCHITECTURE.md: camera-selection path and module entries
+- CURRENT_TASK.md: 002A status update
+
+Co-authored-by: traeagent <traeagent@users.noreply.github.com>
+---
+ CHANGE_SUMMARY.md                             | 64 +++++++++++++
+ CURRENT_TASK.md                               |  4 +-
+ README.md                                     | 10 ++
+ ..._\345\205\210\347\234\213\346\210\221.txt" | 37 +++++++-
+ REVIEW_FOR_OWNERS.md                          | 30 ++++++
+ REVIEW_INBOX.md                               | 46 +++++++++-
+ TEST_REPORT.md                                | 92 +++++++++++--------
+ docs/architecture/ARCHITECTURE.md             |  3 +-
+ docs/architecture/DATA_FLOW.md                | 36 ++++++++
+ 9 files changed, 278 insertions(+), 44 deletions(-)
+
+diff --git a/CHANGE_SUMMARY.md b/CHANGE_SUMMARY.md
+index e350cc2..86ed12c 100644
+--- a/CHANGE_SUMMARY.md
++++ b/CHANGE_SUMMARY.md
+@@ -110,6 +110,70 @@
+   it never changes the spacing/plane/scale math. No v1.2 output or measurement
+   threshold is affected.
+ 
++## Task 002A — pre-test camera discovery & LEFT/RIGHT selection (owner request)
++
++### Added
++
++- `src/stereo_pose/capture/selection.py` — camera discovery, preview, and
++  interactive LEFT/RIGHT selection: `discover_cameras` (bounded index probing,
++  frame-delivering-only usability, sparse-index support), pure
++  `CameraSelectionSession` state machine (number keys assign LEFT then RIGHT,
++  distinct cameras only; `U` undo, `R` rescan, `ENTER` confirm, `Q`/`ESC`
++  cancel), `render_canvas` (labeled live tiles: `CAM n` + LEFT green / RIGHT
++  blue role tags + status/instruction bar), `save_camera_choice` (atomic
++  temp-file + `os.replace` persistence preserving unrelated fields),
++  `run_camera_selection` (full picker; releases every probe handle on every
++  path), and `selection_requested` (launcher gating). All device/GUI access is
++  injectable for hardware-free deterministic tests.
++- `calibration/metadata.py` — `camera_identity_warnings`: compares the active
++  calibration NPZ's recorded left/right indexes with the currently selected
++  pair; warn-only, never deletes/rewrites the NPZ.
++- Config `camera.selection` section (`startup_pick` default true,
++  `probe_max_index` default 7, `first_frame_attempts` default 5) in
++  `config.py` defaults + validation, `configs/default.json`, and
++  `configs/schemas/default.schema.json`.
++- CLI `--camera-pick` flag on `stereo_pose run` (opt-in; suppressed by explicit
++  `--left-cam`/`--right-cam`).
++- Tests: `tests/unit/test_camera_selection.py` (43 tests: discovery/assignment/
++  rescan/error paths, handle release on every path, atomic + field-preserving
++  config write, cancel-never-writes, malformed-config safety, CLI precedence,
++  noninteractive gating, calibration identity warnings).
++
++### Modified
++
++- `RUN_ME.py` — offers the picker before doctor/tracking when
++  `selection_requested` (default on); failure of the picker never blocks
++  startup; config reloaded after confirmation. `RUN_ME.bat` banner explains
++  the selection step.
++- `app/runner.py` — `--camera-pick` flag; `should_pick_cameras` precedence
++  (explicit CLI indexes > `--camera-pick` > nothing); startup and post-solve
++  calibration compatibility reports now also surface camera-index identity
++  warnings as a prominent banner.
++- `tests/unit/test_cleanup.py::test_rejects_symlink_escape` — made
++  deterministic: the symlink target's mtime is aged explicitly, because
++  the candidate sort key `stat().st_mtime` follows the link and tied
++  timestamps let directory order decide which file was "newest".
++- `README_先看我.txt` (visual LEFT/RIGHT picking instructions + 3-camera
++  manual acceptance checklist + calibration-identity reminder),
++  `README.md`, `docs/architecture/DATA_FLOW.md` (camera-selection path,
++  identity-warning behavior).
++
++### Behavior changes
++
++- `RUN_ME.bat` now opens the visual camera picker by default before tracking
++  (`camera.selection.startup_pick: true`; disable via config or the
++  `STEREO_POSE_NO_CAMERA_PICK` environment variable). Confirmed choices are
++  persisted to the local config.json; cancellation leaves it unchanged.
++- Startup prints a prominent warning banner when the active calibration's
++  recorded camera indexes differ from the selected pair (or cannot be
++  verified). The warning is advisory: no calibration file is deleted,
++  overwritten, or auto-invalidated.
++
++### Numerical behavior changes
++
++- None. No measurement thresholds, quality gates, filters, or v1.2 outputs
++  changed.
++
+ ---
+ 
+ # Change summary — Task 001
+diff --git a/CURRENT_TASK.md b/CURRENT_TASK.md
+index 36ff1f2..a52bbb6 100644
+--- a/CURRENT_TASK.md
++++ b/CURRENT_TASK.md
+@@ -2,7 +2,7 @@
+ 
+ - **Task ID:** 002
+ - **Title:** Metric validation and joint rejection diagnostics
+-- **Status:** IN PROGRESS — PRETEST BLOCKER 002A CAMERA SELECTION
++- **Status:** IN PROGRESS — 002A camera selection implemented; awaiting reviewer re-review on PR #2
+ - **Target branch:** `feat/002-metric-validation-diagnostics`
+ - **Base branch:** `main`
+ - **Instruction:** `docs/instructions/002_METRIC_VALIDATION_DIAGNOSTICS.md`
+@@ -28,6 +28,8 @@ Task 002 must make measurement accuracy and rejection reasons observable before
+ 
+ **Owner request before hardware testing:** user changed laptop and now has an integrated webcam plus two USB webcams. A visual LEFT/RIGHT camera picker must be implemented and reviewed before asking the owner to run D/V tests. Treat `docs/instructions/002A_CAMERA_SELECTION_PRETEST.md` as the immediate implementation priority, on the same feature branch and existing PR #2.
+ 
++**002A status (2026-10-08):** implemented, tested (176/176), and committed on `feat/002-metric-validation-diagnostics` — see the RESOLVED item in `REVIEW_INBOX.md`. Next steps: push the two commits to PR #2 → reviewer re-review of 002A → owner runs the 3-camera manual acceptance checklist (`README_先看我.txt`) → owner runs the D/V real-hardware acceptance. Do not merge PR #2 before re-review.
++
+ ## Completion
+ 
+ Task 002 is not complete until all acceptance criteria in the instruction pass, review artifacts are updated, the branch is pushed, and a PR to `main` exists.
+diff --git a/README.md b/README.md
+index 8f503ab..c3028d4 100644
+--- a/README.md
++++ b/README.md
+@@ -85,6 +85,16 @@ Put a local pose model (e.g. `yolo11n-pose.pt`) at the path configured in
+ python -m stereo_pose run --config config.json
+ ```
+ 
++The bundled `RUN_ME.bat`/`RUN_ME.py` launcher first opens an interactive
++camera-selection window (discover → live preview → assign LEFT/RIGHT by
++number keys; `camera.selection.startup_pick`, default true) so the operator
++can visually pick the two physical cameras without editing config.json. The
++confirmed choice is atomically persisted to the local config; cancelling
++leaves it untouched. From the CLI the picker is opt-in via
++`python -m stereo_pose run --camera-pick` (explicit `--left-cam`/`--right-cam`
++always take precedence; noninteractive runs never open a GUI). The environment
++variable `STEREO_POSE_NO_CAMERA_PICK` force-disables the startup picker.
++
+ Run-time generated artifacts (calibrations, sessions, logs, captures) stay
+ under `runtime/` and are not committed.
+ 
+diff --git "a/README_\345\205\210\347\234\213\346\210\221.txt" "b/README_\345\205\210\347\234\213\346\210\221.txt"
+index 308fa9b..789e1a9 100644
+--- "a/README_\345\205\210\347\234\213\346\210\221.txt"
++++ "b/README_\345\205\210\347\234\213\346\210\221.txt"
+@@ -25,11 +25,30 @@ OpenCV / PyTorch / Ultralytics missing
+ 说明 Windows 双击时调用的 python 不是你以前成功运行双目 PoC 的那个 Python。
+ 它不会自行安装依赖。
+ 
+-默认摄像头：
+-left = 0
+-right = 1
++摄像头选择（Task002A 新增，双击 RUN_ME.bat 后第一步）：
++双击 RUN_ME.bat 后会先弹出"摄像头选择"窗口，帮你用眼睛认出哪个摄像头是哪个，
++不需要改 config.json：
+ 
+-如果不对，用记事本打开 config.json 修改即可。
++1. 窗口里每个可用的摄像头显示一个画面格子，左上角标着 CAM 0 / CAM 1 / CAM 2 ...
++2. 先按你想要的左摄像头的数字键（例如 1）——该格子上会出现绿色 LEFT 标签
++3. 再按右摄像头的数字键（例如 2）——该格子上会出现蓝色 RIGHT 标签
++4. 按 ENTER 确认并保存，程序接着自动开始
++   按 U 撤销 / R 重新扫描（插拔摄像头后用）/ Q 或 ESC 取消（保持原配置不变）
++5. 两个摄像头不能选同一个；确认后选择会自动保存到 config.json（原子写入，
++   中断也不会写坏文件），其他设置不受影响
++
++找不到两个可用摄像头时会提示，插好两个 USB 摄像头后按 R 重扫即可。
++不想每次都选：把 config.json 里 camera.selection.startup_pick 改为 false，
++或设置环境变量 STEREO_POSE_NO_CAMERA_PICK=1。
++
++重要提醒（标定与摄像头的对应关系）：
++- 以前保存的标定只对"同一对物理摄像头 + 同一安装几何"有效。
++  换电脑后摄像头编号可能变化（例如原来的 0/1 变成 1/2）。
++- 如果启动时检测到当前左右编号与标定记录的编号不一致，程序会打印醒目的
++  警告横幅：请人工确认物理左右摄像头是否和标定时相同；
++  只要摄像头和支架没动，旧标定通常可以继续用；
++  换过设备或挪过支架，请重新标定（按 C 采集 + R 求解）。
++- 程序永远不会因为编号变化自动删除或覆盖已有标定文件。
+ 
+ 当前标定板：
+ - 10 x 7 个方格
+@@ -65,6 +84,16 @@ Task002 新增说明：
+ - 尽量覆盖画面左中右、上中下、近中远，并改变棋盘姿态
+ - readiness >= 75 后再按 R
+ 
++三摄像头笔记本人工验收清单（内置摄像头 + 两个 USB 摄像头）：
++1. 双击 RUN_ME.bat，弹出的选择窗口里能看到三个画面（CAM 0/1/2）
++2. 三个画面与实际摄像头一一对应（用手挡一下某个摄像头即可确认是哪个）
++3. 按 1 再按 2（或你实际的两个 USB 摄像头编号），绿色 LEFT / 蓝色 RIGHT 标签正确显示
++4. 按 R 重扫：拔掉一个 USB 摄像头再插回，重扫后列表正确更新
++5. 按 ENTER 确认：主程序正常打开两个摄像头并开始跟踪，控制台打印所选编号
++6. 按 Q 取消（另开一次程序测试）：config.json 保持不变
++7. 若已有旧标定且编号变化：启动时出现醒目警告横幅，且旧标定文件仍在
++8. 全程无需记事本、无需命令行、无需 pip
++
+ 
+ 当前标定行为（默认参数）：
+ - 自动稳定时间 0.30 s，稳定角点运动容忍 5 px
+diff --git a/REVIEW_FOR_OWNERS.md b/REVIEW_FOR_OWNERS.md
+index f2abd51..d172a18 100644
+--- a/REVIEW_FOR_OWNERS.md
++++ b/REVIEW_FOR_OWNERS.md
+@@ -36,6 +36,36 @@ implementation detail is omitted.
+ - Pull request: https://github.com/CaiKerman/stereo-pose/pull/2
+ - Head commit SHA (round 1): `9a68f428956a28a2a0d36629bac9810a91a15c31`
+ 
++## Task 002A — camera discovery & LEFT/RIGHT selection (owner pre-test request)
++
++Implemented per `docs/instructions/002A_CAMERA_SELECTION_PRETEST.md` on the
++same Task 002 branch / PR #2.
++
++### Decisions taken (no new owner input required)
++
++1. **Picker is on by default for the RUN_ME launcher** (`camera.selection.startup_pick: true`) — this is what the owner asked for (double-click, pick, go). It can be disabled via config or `STEREO_POSE_NO_CAMERA_PICK=1`. The project CLI stays opt-in (`--camera-pick`), so automated/noninteractive workflows never see a GUI.
++2. **Index identity ≠ physical identity.** When the active calibration's recorded left/right indexes differ from the selected pair (or are missing), a prominent warning banner is printed at startup. The warning is advisory only: no NPZ is deleted, rewritten, or auto-invalidated. The operator decides whether the physical pairing is unchanged (keep calibration) or to recalibrate.
++3. **No new dependencies / no pip at runtime.** The picker is plain OpenCV (`imshow` + `waitKey`) on the existing capture backend settings.
++
++### Notes / risks
++
++- Numeric camera indexes can change between boots (Windows enumeration). The
++  persisted choice is the current best knowledge; the picker + identity banner
++  is the mitigation. Physical identity cannot be proven programmatically with
++  plain OpenCV on Windows — device names are not reliably exposed.
++- The deterministic suite covers all selection logic with injected fakes; the
++  real 3-camera acceptance (visual tiles, hotplug rescan, actual window) is
++  left to the owner via the checklist in `README_先看我.txt`.
++- One pre-existing test (`test_rejects_symlink_escape`) was made deterministic
++  (aged symlink-target mtime); no product code changed for it.
++
++### Handoff (Task 002A)
++
++- Task branch: `feat/002-metric-validation-diagnostics`
++- Pull request: https://github.com/CaiKerman/stereo-pose/pull/2
++- Head commits (002A): implementation `1c73556` + docs commit on top (see `git log` / PR #2)
++- Not merged; awaiting reviewer re-review.
++
+ ## Task 001 — Need decision
+ 
+ 1. **Module layout additions beyond the literal skeleton.** The instruction's
+diff --git a/REVIEW_INBOX.md b/REVIEW_INBOX.md
+index 0a5821c..bf579ac 100644
+--- a/REVIEW_INBOX.md
++++ b/REVIEW_INBOX.md
+@@ -100,7 +100,7 @@ Do not merge until those two live paths are exercised.
+ 
+ ## Task 002A — Multi-camera selection on 3-camera laptop (OWNER REQUEST, PRE-TEST BLOCKER)
+ 
+-**Status: OPEN — implementation required before real-hardware D/V testing.**
++**Status: RESOLVED — pending reviewer re-review.**
+ 
+ The test laptop has **one integrated camera + two USB webcams**. The user must be able to **visually identify all available feeds and select distinct LEFT and RIGHT USB webcams** without Git, manual camera index editing, or pip installation.
+ 
+@@ -118,4 +118,46 @@ Minimum acceptance:
+ 6. Deterministic tests + user documentation + update CHANGE_SUMMARY / TEST_REPORT / REVIEW_FOR_OWNERS.
+ 7. Push changes to **this existing PR #2** and mark this item **RESOLVED — pending reviewer re-review**. **Do not merge.**
+ 
+-Reviewer will approve this incremental pretest change, then owner will run D and V using the two selected external webcams. Do not start Task 003 yet.
++Resolution (2026-10-08):
++
++- `src/stereo_pose/capture/selection.py` implements the full picker:
++  `discover_cameras` probes `0..camera.selection.probe_max_index` (default 7,
++  configurable; sparse indexes naturally supported) and keeps only cameras
++  that open **and deliver a frame** (`first_frame_attempts`, default 5);
++  `CameraSelectionSession` is a pure state machine — number keys assign LEFT
++  then RIGHT, duplicates rejected, `U` undo, `R` rescan, `ENTER` confirm,
++  `Q`/`ESC` cancel; `render_canvas` composes labeled live tiles (`CAM n` +
++  LEFT green / RIGHT blue) with a status/instruction bar — visual
++  identification, no device-name dependency.
++- Every probe handle is released on every path (confirm / cancel / rescan /
++  error / loop-limit) before the stereo `open_camera` calls, asserted by tests.
++- `save_camera_choice` atomically persists `camera.left`/`camera.right`
++  (temp file + `os.replace`), preserves unrelated fields verbatim, never
++  writes on cancel, and a failed/malformed write leaves the previous config
++  intact.
++- `RUN_ME.bat`/`RUN_ME.py` open the picker before doctor/tracking
++  (`camera.selection.startup_pick`, default true; disable via config or
++  `STEREO_POSE_NO_CAMERA_PICK`); a picker crash never blocks startup. The
++  project CLI gains an opt-in `--camera-pick`; explicit `--left-cam`/
++  `--right-cam` always win; flag-less CLI never opens a GUI.
++- `calibration/metadata.py:camera_identity_warnings` + `app/runner.py`
++  surface a prominent startup banner when the active NPZ's recorded
++  left/right indexes mismatch (or are unverifiable). Warn-only: no NPZ is
++  deleted, rewritten, or auto-invalidated; numeric index equality is never
++  claimed to prove physical identity.
++- No new dependencies, no runtime pip, no GUI framework beyond OpenCV
++  `imshow`/`waitKey`, no numerical threshold changes.
++- Tests: `tests/unit/test_camera_selection.py` — 43 deterministic tests with
++  injected fake cameras/UI covering all instruction section E items (E1–E8);
++  full suite 176 passed / 0 failed / 0 skipped. User documentation:
++  `README_先看我.txt` (visual picking steps + 3-camera manual acceptance
++  checklist + calibration-identity reminder), `README.md`,
++  `docs/architecture/DATA_FLOW.md`; `CHANGE_SUMMARY.md` / `TEST_REPORT.md` /
++  `REVIEW_FOR_OWNERS.md` updated.
++- Pre-existing `test_rejects_symlink_escape` made deterministic (aged symlink
++  target mtime; no product code change) — it now runs and passes on Linux.
++
++Remaining for the owner (cannot be claimed without hardware): physically run
++the 3-camera manual acceptance checklist in `README_先看我.txt`, then the D/V
++real-hardware acceptance. Commits `1c73556` (implementation) + docs commit on
++top target PR #2; do not merge until the reviewer re-approves.
+diff --git a/TEST_REPORT.md b/TEST_REPORT.md
+index 01c4408..38dd05e 100644
+--- a/TEST_REPORT.md
++++ b/TEST_REPORT.md
+@@ -22,44 +22,50 @@ source-path bootstrap and cannot import `stereo_pose`.
+ 
+ ## Results
+ 
+-- Ran: 133 tests
+-- Passed: 132
+-- Failed: 0
+-- Skipped: 1 (`test_rejects_symlink_escape` — symlinks not supported on this
+-  platform without elevation)
+-- Duration: ~3.1s (pytest), ~0.7s (unittest)
+-
+-New in Task 002 (33 tests):
+-
+-- `tests/unit/test_joint_rejection.py` — per-joint terminal-state classifier,
+-  coarse-bucket mapping, and no-behaviour-change parity with
+-  `evaluate_measurement`.
+-- `tests/unit/test_metric_validation.py` — exact/noisy synthetic checkerboard
+-  reconstruction, plane fit, scale error, missing corners.
+-- `tests/unit/test_diagnostics_render.py` — diagnostic summary + aggregate text.
+-- `tests/unit/test_validation_report.py` — JSON round-trip and managed-root
+-  path containment.
+-
+-Added in review round 1 (4 tests, `tests/unit/test_metric_validation.py`,
+-`TestCorrespondenceNormalization`):
++Latest full-suite run (after Task 002A camera selection):
+ 
+-- `test_direct_ordering_selects_direct`
+-- `test_reversed_right_ordering_is_corrected`
+-- `test_implausible_correspondence_fails_cleanly`
+-- `test_reversed_right_recovers_expected_grid_metric`
+-
+-## Environment
+-
+-- OS: Windows 10 Pro
+-- Python: 3.10.11 (CPython)
+-- pytest: 9.1.1
+-- NumPy: 2.2.6
+-- OpenCV (cv2): 4.13.0
++- Ran: 176 tests
++- Passed: 176
++- Failed: 0
++- Skipped: 0
++- Duration: ~0.6s (pytest)
++
++`test_rejects_symlink_escape` now runs and passes on this platform (Linux,
++symlinks allowed); it also became deterministic — the symlink target's mtime is
++aged explicitly because the cleanup candidate sort key `stat().st_mtime`
++follows the link, and tied timestamps let directory order decide which file
++was "newest".
++
++Task 002 round 1 previously ran 133 tests (132 passed, 1 skipped on Windows
++where symlinks need elevation). New test totals:
++
++- Task 002 core: 33 tests (`test_joint_rejection.py`,
++  `test_metric_validation.py`, `test_diagnostics_render.py`,
++  `test_validation_report.py`).
++- Review round 1: 4 correspondence-normalization tests.
++- Task 002A: 43 tests (`tests/unit/test_camera_selection.py`) — discovery/
++  assignment/rescan/error paths, handle release on every path, atomic +
++  field-preserving config write, cancel-never-writes, malformed-config
++  safety, CLI precedence, noninteractive gating, calibration identity
++  warnings.
++
++## Environment (latest run — Task 002A)
++
++- OS: Linux (container sandbox)
++- Python: 3.14.4 (CPython)
++- pytest: 9.0.3
++- NumPy: 2.5.3
++- OpenCV (cv2): 5.0.0 (headless; no GUI windows exercised in tests)
+ - torch: NOT installed
+ - ultralytics: NOT installed
+ - CUDA: not available (not present)
+ 
+-Tests run with no webcams, no CUDA, and no model weights.
++Tests run with no webcams, no CUDA, and no model weights. The camera-selection
++tests inject fake open/read/release/waitKey/show functions — no real devices
++and no display are required.
++
++Environment of the Task 002 round-1 run (for reference): Windows 10 Pro,
++Python 3.10.11, pytest 9.1.1, NumPy 2.2.6, OpenCV 4.13.0.
+ 
+ ## Coverage by requirement (Task 002, Part C)
+ 
+@@ -76,6 +82,19 @@ Tests run with no webcams, no CUDA, and no model weights.
+ | output path stays inside managed validation root | `test_validation_report.py::TestReportPersistence` |
+ | correspondence normalization (direct / reversed_180 / implausible) | `test_metric_validation.py::TestCorrespondenceNormalization` |
+ 
++## Coverage by requirement (Task 002A, instruction section E)
++
++| Requirement | Test(s) |
++|---|---|
++| E1 — 3 detected inputs, user picks LEFT=1 / RIGHT=2, confirmed order reaches startup | `TestRunCameraSelection::test_confirm_persists_choice_and_feeds_startup_config`, `TestDiscovery::test_three_cameras_all_usable` |
++| E2 — sparse indexes; opens-but-no-frames device excluded; <2 usable cameras handled | `TestDiscovery` (`test_sparse_indexes_supported`, `test_opens_but_no_frames_is_not_usable_and_released`, `test_read_error_is_not_usable_and_released`), `TestRunCameraSelection::test_fewer_than_two_cameras_warns_and_cancel_keeps_config` |
++| E3 — same camera for both roles rejected | `TestSessionState::test_duplicate_camera_rejected`, `test_enter_requires_complete_assignment` |
++| E4 — preview/cancel/rescan/error paths always release camera resources | `TestRunCameraSelection` (`test_rescan_releases_then_reprobes`, `test_show_error_still_releases_all_handles`, `test_loop_limit_guard`, `test_failed_save_returns_none_and_keeps_previous_config`), `TestDiscovery` release assertions |
++| E5 — config persistence keeps unrelated fields; cancel never writes; failed write never corrupts | `TestSaveCameraChoice` (`test_preserves_unrelated_fields_and_updates_cameras`, `test_malformed_config_raises_and_leaves_file_untouched`, `test_failed_write_does_not_corrupt_previous_config`), `TestRunCameraSelection::test_cancel_never_writes_config` |
++| E6 — CLI override / noninteractive entry works, never blocks on GUI | `TestNoninteractiveSafety` (flagless CLI never offers selection; `--camera-pick` enables; explicit `--left-cam`/`--right-cam` override; `startup_pick` config + `STEREO_POSE_NO_CAMERA_PICK` env; CLI help lists the flag) |
++| E7 — NPZ camera-index mismatch warning shown without discarding calibration | `TestCalibrationIdentityWarning` (mismatch banner, silent-on-match, missing-camera-fields warning, runner banner without discarding) |
++| E8 — existing Task 002 deterministic suite continues to pass | full suite: 176 passed, 0 failed |
++
+ ## Untested hardware/physical paths
+ 
+ - Live two-webcam acquisition, real-time tracking, and the `D`/`V` hotkeys
+@@ -83,9 +102,10 @@ Tests run with no webcams, no CUDA, and no model weights.
+ - Real checkerboard metric validation on hardware (requires a printed 25 mm
+   board + cameras + a solved calibration).
+ - CUDA device selection and actual YOLO inference (require torch + weights).
+-- Symlink-escape path is skipped on this platform (no symlink privilege); the
+-  guard logic is still asserted on a resolved-outside path in
+-  `test_rejects_dirs_outside_trusted_root_without_deletion`.
++- The interactive camera picker itself on real hardware (real `cv2.imshow`
++  window, real hotplug rescan) — injected-fake tests cover the logic; the
++  3-camera manual acceptance checklist in `README_先看我.txt` is left for the
++  owner to exercise physically.
+ 
+ The deterministic suite exercises all numerical logic that does not require
+ hardware or network.
+diff --git a/docs/architecture/ARCHITECTURE.md b/docs/architecture/ARCHITECTURE.md
+index cac44b6..7bfe6c7 100644
+--- a/docs/architecture/ARCHITECTURE.md
++++ b/docs/architecture/ARCHITECTURE.md
+@@ -16,7 +16,8 @@ Each subsystem is a Python subpackage under `src/stereo_pose/`:
+ | Subpackage | Responsibility | Key types / entry points |
+ |---|---|---|
+ | `capture/` | Open webcams and read matched stereo pairs | `open_camera`, `read_stereo_pair` |
+-| `calibration/` | Collect stable checkerboard pairs and solve stereo calibration | `RuntimeCalibration`, `newest_calibration`, `load_calibration_metadata`, `validate_calibration_compatibility` |
++| `capture/` (selection) | Discover cameras, preview, interactive LEFT/RIGHT selection (Task 002A) | `run_camera_selection`, `discover_cameras`, `CameraSelectionSession`, `save_camera_choice` |
++| `calibration/` | Collect stable checkerboard pairs and solve stereo calibration | `RuntimeCalibration`, `newest_calibration`, `load_calibration_metadata`, `validate_calibration_compatibility`, `camera_identity_warnings` |
+ | `pose/` | YOLO Pose inference and device resolution | `PoseEstimator`, `resolve_device` |
+ | `geometry/` | Rectified triangulation + error metrics | `StereoTriangulator` |
+ | `quality/` | Measurement quality score, accept/reject gates, and per-joint rejection classification | `evaluate_measurement`, `heuristic_quality_score`, `TemporalSpeedGate`, `classify_joint`, `aggregate_bucket` |
+diff --git a/docs/architecture/DATA_FLOW.md b/docs/architecture/DATA_FLOW.md
+index e2e8606..f366c36 100644
+--- a/docs/architecture/DATA_FLOW.md
++++ b/docs/architecture/DATA_FLOW.md
+@@ -2,6 +2,35 @@
+ 
+ The live pipeline data flow (port of the validated v1.2 behavior).
+ 
++## Camera selection path (startup, Task 002A)
++
++Before the stereo tracking loop opens its two cameras, the RUN_ME launcher
++(`camera.selection.startup_pick`, default true) and the explicit
++`--camera-pick` CLI flag can run an interactive picker
++(`capture.selection.run_camera_selection`):
++
++1. probe indexes `0..camera.selection.probe_max_index` (default 7) with the
++   same backend/fourcc/buffer settings as tracking; sparse indexes are natural
++   (missing devices simply fail to open);
++2. keep only cameras that open **and deliver a frame** within
++   `first_frame_attempts` reads as usable, holding their handles for the live
++   preview;
++3. render one labeled live tile per usable camera (`CAM n` + assigned role:
++   LEFT green / RIGHT blue) plus a status/instruction bar — visual
++   identification, no camera-name requirement;
++4. number keys assign LEFT then RIGHT (distinct cameras only), `U` undo,
++   `R` rescan (after plug/unplug), `ENTER` confirm, `Q`/`ESC` cancel;
++5. on confirm, atomically persist `camera.left`/`camera.right` to the local
++   config.json (temp file + `os.replace`, unrelated fields preserved); on
++   cancel nothing is written;
++6. release **every** probe handle on every path (confirm / cancel / rescan /
++   error) before returning, so tracking opens its cameras from a clean device
++   state.
++
++Noninteractive runs never see this UI: explicit `--left-cam`/`--right-cam`
++always win, the flag-less CLI path never opens it, and
++`STEREO_POSE_NO_CAMERA_PICK` force-disables the launcher entry.
++
+ ## Tracking path (steady state)
+ 
+ ```text
+@@ -97,6 +126,13 @@ statistics, sample/prune counts, readiness, image size, board geometry, creation
+ time, and the capture camera identity/config (indices, backend, requested /
+ actual resolution and FPS).
+ 
++When a calibration is loaded for tracking, `camera_identity_warnings`
++(Task 002A) compares the recorded left/right indexes with the currently
++selected ones and prints a prominent banner on mismatch or unverifiable
++pairing: numeric equality never proves physical identity, and the warning
++never deletes or rewrites the NPZ — the operator decides whether to keep the
++calibration or recalibrate.
++
+ ## Generated artifacts
+ 
+ ```text
+-- 
+2.43.0
+
