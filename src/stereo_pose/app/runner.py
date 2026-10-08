@@ -562,7 +562,8 @@ def main():
         "--camera-pick", action="store_true",
         help="run the visual camera discovery/LEFT-RIGHT selection before "
              "opening the stereo cameras (skipped when --left-cam/--right-cam "
-             "are given; the confirmed choice is saved to the config)",
+             "are given; the confirmed choice is saved to the config; "
+             "cancelling or failure aborts startup without opening cameras)",
     )
     args = ap.parse_args()
 
@@ -574,8 +575,18 @@ def main():
     elif should_pick_cameras(args):
         from stereo_pose.capture.selection import run_camera_selection
 
-        run_camera_selection(cfg_path)
+        try:
+            choice = run_camera_selection(cfg_path)
+        except Exception as e:  # noqa: BLE001 — surface, then fail closed
+            print(f"[camera-pick] camera selection failed: {e}")
+            print("[camera-pick] aborting startup — no stereo tracking started.")
+            raise SystemExit(1)
+        if choice is None:
+            print("[camera-pick] camera selection cancelled or could not be saved.")
+            print("[camera-pick] aborting startup — no stereo tracking started.")
+            raise SystemExit(1)
         cfg = load_config(cfg_path)  # reload: the confirmed choice was persisted
+        print(f"[camera-pick] cameras confirmed: LEFT={choice.left} RIGHT={choice.right}")
 
     run(args, cfg)
 

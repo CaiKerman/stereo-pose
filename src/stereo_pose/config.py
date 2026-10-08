@@ -27,6 +27,8 @@ DEFAULT_CONFIG: dict = {
             # Task 002A: interactive LEFT/RIGHT camera picker offered by RUN_ME.
             "startup_pick": True,
             # Probe OpenCV indexes 0..probe_max_index when discovering cameras.
+            # The picker assigns cameras with single-digit number keys, so this
+            # is bounded to 0..9 (an index >= 10 could never be selected).
             "probe_max_index": 7,
             # Reads attempted before declaring an opened camera "no frames".
             "first_frame_attempts": 5,
@@ -227,7 +229,7 @@ def validate_config(cfg: dict) -> None:
         _err(errors, "camera.selection", "must be an object")
     else:
         _bool(sel.get("startup_pick"), "camera.selection.startup_pick", errors)
-        _int(sel.get("probe_max_index"), "camera.selection.probe_max_index", errors, lo=0, hi=63)
+        _int(sel.get("probe_max_index"), "camera.selection.probe_max_index", errors, lo=0, hi=9)
         _int(sel.get("first_frame_attempts"), "camera.selection.first_frame_attempts", errors, lo=1, hi=60)
 
     p = cfg.get("pose", {})

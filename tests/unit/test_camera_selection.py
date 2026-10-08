@@ -517,12 +517,20 @@ class TestSelectionConfig(unittest.TestCase):
 
     def test_bad_probe_max_index_raises(self):
         cfg = load_config(None)
-        cfg["camera"]["selection"]["probe_max_index"] = 64
+        cfg["camera"]["selection"]["probe_max_index"] = 10
         with self.assertRaises(ConfigError):
             validate_config(cfg)
         cfg["camera"]["selection"]["probe_max_index"] = -1
         with self.assertRaises(ConfigError):
             validate_config(cfg)
+
+    def test_probe_max_index_boundary_accepted(self):
+        # B3: the picker assigns cameras with single-digit keys, so the scan
+        # range is 0..9; 9 is the maximum valid value.
+        for idx in (0, 9):
+            cfg = load_config(None)
+            cfg["camera"]["selection"]["probe_max_index"] = idx
+            validate_config(cfg)  # must not raise
 
     def test_bad_first_frame_attempts_raises(self):
         cfg = load_config(None)
@@ -597,6 +605,75 @@ class TestNoninteractiveSafety(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertIn("--camera-pick", proc.stdout)
         self.assertIn("--left-cam", proc.stdout)
+
+
+class TestFailClosed(unittest.TestCase):
+    """B1: cancelling or failing camera selection must never start tracking."""
+
+    def _load_run_me(self):
+        import importlib.util
+
+        run_me_path = Path(__file__).resolve().parents[2] / "RUN_ME.py"
+        spec = importlib.util.spec_from_file_location("run_me_under_test", run_me_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _exercise_launcher(self, picker_kwargs):
+        """Run the RUN_ME launcher main() with camera selection forced to
+        cancel (return None) or fail (raise); return the run_main call log."""
+        mod = self._load_run_me()
+        from stereo_pose.app import runner as runner_mod
+        from stereo_pose.capture import selection as sel
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "yolo11n-pose.pt").write_bytes(b"dummy model")
+            cfg_path = _write_config(root / "config.json")  # startup_pick: true
+            run_main_calls = []
+
+            with mock.patch.object(mod, "ROOT", root), \
+                 mock.patch.object(mod, "check_dependencies"), \
+                 mock.patch.object(mod, "ensure_config", return_value=cfg_path), \
+                 mock.patch.object(sel, "run_camera_selection", **picker_kwargs), \
+                 mock.patch.object(runner_mod, "main", side_effect=lambda: run_main_calls.append(1)):
+                with self.assertRaises(SystemExit):
+                    mod.main()
+            return run_main_calls
+
+    def test_cli_camera_pick_cancel_never_runs_tracking(self):
+        from stereo_pose.app import runner as runner_mod
+        from stereo_pose.capture import selection as sel
+
+        with tempfile.TemporaryDirectory() as d:
+            cfg_path = _write_config(Path(d) / "config.json")
+            with mock.patch.object(
+                sys, "argv", ["stereo_pose", "run", "--config", str(cfg_path), "--camera-pick"]
+            ), mock.patch.object(sel, "run_camera_selection", return_value=None), \
+               mock.patch.object(runner_mod, "run") as run_fn:
+                with self.assertRaises(SystemExit):
+                    runner_mod.main()
+                run_fn.assert_not_called()
+
+    def test_cli_camera_pick_failure_never_runs_tracking(self):
+        from stereo_pose.app import runner as runner_mod
+        from stereo_pose.capture import selection as sel
+
+        with tempfile.TemporaryDirectory() as d:
+            cfg_path = _write_config(Path(d) / "config.json")
+            with mock.patch.object(
+                sys, "argv", ["stereo_pose", "run", "--config", str(cfg_path), "--camera-pick"]
+            ), mock.patch.object(sel, "run_camera_selection", side_effect=RuntimeError("boom")), \
+               mock.patch.object(runner_mod, "run") as run_fn:
+                with self.assertRaises(SystemExit):
+                    runner_mod.main()
+                run_fn.assert_not_called()
+
+    def test_launcher_cancel_never_runs_tracking(self):
+        self.assertEqual(self._exercise_launcher({"return_value": None}), [])
+
+    def test_launcher_failure_never_runs_tracking(self):
+        self.assertEqual(self._exercise_launcher({"side_effect": RuntimeError("boom")}), [])
 
 
 class TestCalibrationIdentityWarning(unittest.TestCase):

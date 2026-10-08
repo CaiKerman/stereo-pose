@@ -134,19 +134,21 @@
   `configs/schemas/default.schema.json`.
 - CLI `--camera-pick` flag on `stereo_pose run` (opt-in; suppressed by explicit
   `--left-cam`/`--right-cam`).
-- Tests: `tests/unit/test_camera_selection.py` (43 tests: discovery/assignment/
+- Tests: `tests/unit/test_camera_selection.py` (48 tests: discovery/assignment/
   rescan/error paths, handle release on every path, atomic + field-preserving
   config write, cancel-never-writes, malformed-config safety, CLI precedence,
-  noninteractive gating, calibration identity warnings).
+  noninteractive gating, calibration identity warnings, fail-closed B1 +
+  range B3).
 
 ### Modified
 
 - `RUN_ME.py` — offers the picker before doctor/tracking when
-  `selection_requested` (default on); failure of the picker never blocks
-  startup; config reloaded after confirmation. `RUN_ME.bat` banner explains
-  the selection step.
+  `selection_requested` (default on); this gate fails closed (cancel / failure
+  aborts startup, no cameras opened); config reloaded after confirmation.
+  `RUN_ME.bat` banner explains the selection step.
 - `app/runner.py` — `--camera-pick` flag; `should_pick_cameras` precedence
-  (explicit CLI indexes > `--camera-pick` > nothing); startup and post-solve
+  (explicit CLI indexes > `--camera-pick` > nothing); `--camera-pick` also
+  fails closed on cancel/failure; startup and post-solve
   calibration compatibility reports now also surface camera-index identity
   warnings as a prominent banner.
 - `tests/unit/test_cleanup.py::test_rejects_symlink_escape` — made
@@ -164,6 +166,8 @@
   (`camera.selection.startup_pick: true`; disable via config or the
   `STEREO_POSE_NO_CAMERA_PICK` environment variable). Confirmed choices are
   persisted to the local config.json; cancellation leaves it unchanged.
+  Cancelling or failing the picker fails closed: startup aborts instead of
+  reusing possibly-stale indexes.
 - Startup prints a prominent warning banner when the active calibration's
   recorded camera indexes differ from the selected pair (or cannot be
   verified). The warning is advisory: no calibration file is deleted,
@@ -173,6 +177,33 @@
 
 - None. No measurement thresholds, quality gates, filters, or v1.2 outputs
   changed.
+
+## Review round 2 (PR #3 feedback)
+
+### Behavior changes (B1 — fail closed)
+
+- `RUN_ME.py` and `app/runner.py --camera-pick` no longer catch-and-continue
+  on picker exception, and now treat a `None` (cancel / failed save) result as
+  an abort: they exit `SystemExit(1)` without opening cameras or starting
+  stereo tracking. Only a confirmed, persisted choice proceeds.
+
+### Config changes (B3 — probe range)
+
+- `camera.selection.probe_max_index` validation upper bound lowered from 63 to
+  9 (matching the picker's single-digit number keys), in `config.py` and
+  `configs/schemas/default.schema.json`. `configs/default.json` (7) unchanged.
+
+### Artifacts (B2)
+
+- Verified all round-1 claimed artifacts are committed; `TEST_REPORT.md`,
+  `CHANGE_SUMMARY.md`, and `REVIEW_INBOX.md` updated to match the code and the
+  181-test count.
+
+### Tests
+
+- `tests/unit/test_camera_selection.py`: `test_probe_max_index_boundary_accepted`
+  (0 and 9 valid; B3) and `TestFailClosed` (4 tests asserting tracking never
+  starts on CLI/RUN_ME cancel or failure; B1). Full suite: 181 passed.
 
 ---
 

@@ -122,7 +122,8 @@ Resolution (2026-10-08):
 
 - `src/stereo_pose/capture/selection.py` implements the full picker:
   `discover_cameras` probes `0..camera.selection.probe_max_index` (default 7,
-  configurable; sparse indexes naturally supported) and keeps only cameras
+  configurable, bounded to 0..9 so every index maps to a single-digit picker
+  key; sparse indexes naturally supported) and keeps only cameras
   that open **and deliver a frame** (`first_frame_attempts`, default 5);
   `CameraSelectionSession` is a pure state machine — number keys assign LEFT
   then RIGHT, duplicates rejected, `U` undo, `R` rescan, `ENTER` confirm,
@@ -137,9 +138,11 @@ Resolution (2026-10-08):
   intact.
 - `RUN_ME.bat`/`RUN_ME.py` open the picker before doctor/tracking
   (`camera.selection.startup_pick`, default true; disable via config or
-  `STEREO_POSE_NO_CAMERA_PICK`); a picker crash never blocks startup. The
-  project CLI gains an opt-in `--camera-pick`; explicit `--left-cam`/
-  `--right-cam` always win; flag-less CLI never opens a GUI.
+  `STEREO_POSE_NO_CAMERA_PICK`). This gate **fails closed**: cancelling the
+  picker, or a picker crash / failed save, aborts startup instead of reusing
+  possibly-stale config indexes (see Review round 2, B1). The project CLI gains
+  an opt-in `--camera-pick` with the same fail-closed behavior; explicit
+  `--left-cam`/`--right-cam` always win; flag-less CLI never opens a GUI.
 - `calibration/metadata.py:camera_identity_warnings` + `app/runner.py`
   surface a prominent startup banner when the active NPZ's recorded
   left/right indexes mismatch (or are unverifiable). Warn-only: no NPZ is
@@ -147,9 +150,10 @@ Resolution (2026-10-08):
   claimed to prove physical identity.
 - No new dependencies, no runtime pip, no GUI framework beyond OpenCV
   `imshow`/`waitKey`, no numerical threshold changes.
-- Tests: `tests/unit/test_camera_selection.py` — 43 deterministic tests with
-  injected fake cameras/UI covering all instruction section E items (E1–E8);
-  full suite 176 passed / 0 failed / 0 skipped. User documentation:
+- Tests: `tests/unit/test_camera_selection.py` — 48 deterministic tests with
+  injected fake cameras/UI covering all instruction section E items (E1–E8)
+  plus the PR #3 round-2 fail-closed (B1) and range (B3) fixes;
+  full suite 181 passed / 0 failed / 0 skipped. User documentation:
   `README_先看我.txt` (visual picking steps + 3-camera manual acceptance
   checklist + calibration-identity reminder), `README.md`,
   `docs/architecture/DATA_FLOW.md`; `CHANGE_SUMMARY.md` / `TEST_REPORT.md` /
@@ -161,3 +165,42 @@ Remaining for the owner (cannot be claimed without hardware): physically run
 the 3-camera manual acceptance checklist in `README_先看我.txt`, then the D/V
 real-hardware acceptance. Commits `1c73556` (implementation) + docs commit on
 top target PR #2; do not merge until the reviewer re-approves.
+
+## Task 002A — Review round 2 (PR #3 feedback)
+
+**Status: RESOLVED — pending reviewer re-review.**
+
+Three blockers raised on PR #3, all fixed on this branch:
+
+### B1 — camera selection must fail closed — RESOLVED
+
+Previously `RUN_ME.py`/`app/runner.py` caught the picker exception and
+continued, and a `None` (cancel/failed-save) return also fell through to
+tracking — silently reusing whatever indexes were already in `config.json`
+(e.g. the built-in laptop camera could be opened as a stereo input).
+
+Now both entry points treat an exception or a `None` result as an abort:
+they print why, open **no** cameras, start **no** stereo tracking, and exit
+with `SystemExit(1)`. Only a confirmed, persisted choice proceeds.
+
+Added `TestFailClosed` (4 tests): CLI `--camera-pick` cancel + failure and
+RUN_ME cancel + failure each assert the tracking entry point is never called.
+
+### B2 — handoff artifacts actually committed — RESOLVED
+
+Verified every artifact the round-1 resolution claimed was updated
+(`README.md`, `README_先看我.txt`, `CHANGE_SUMMARY.md`, `TEST_REPORT.md`,
+`REVIEW_FOR_OWNERS.md`, `docs/architecture/DATA_FLOW.md`) is committed on the
+branch. This round additionally updates `TEST_REPORT.md`, `CHANGE_SUMMARY.md`,
+and this file so their claims match the B1/B3 code changes and the 181-test
+count.
+
+### B3 — `probe_max_index` bounded to 0..9 — RESOLVED
+
+The picker assigns cameras with single-digit number keys, but the config
+validation previously allowed `probe_max_index` up to 63 — so any discovered
+index ≥ 10 could never be selected. `config.py` validation and
+`default.schema.json` now bound `probe_max_index` to `0..9`; `default.json`
+(7) is already in range. Tests cover 0 and 9 as valid, 10 and -1 as invalid.
+
+Do not merge; awaiting reviewer re-review.

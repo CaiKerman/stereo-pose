@@ -22,13 +22,13 @@ source-path bootstrap and cannot import `stereo_pose`.
 
 ## Results
 
-Latest full-suite run (after Task 002A camera selection):
+Latest full-suite run (after PR #3 camera-selection fixes):
 
-- Ran: 176 tests
-- Passed: 176
+- Ran: 181 tests
+- Passed: 181
 - Failed: 0
 - Skipped: 0
-- Duration: ~0.6s (pytest)
+- Duration: ~0.7s (pytest)
 
 `test_rejects_symlink_escape` now runs and passes on this platform (Linux,
 symlinks allowed); it also became deterministic — the symlink target's mtime is
@@ -43,11 +43,14 @@ where symlinks need elevation). New test totals:
   `test_metric_validation.py`, `test_diagnostics_render.py`,
   `test_validation_report.py`).
 - Review round 1: 4 correspondence-normalization tests.
-- Task 002A: 43 tests (`tests/unit/test_camera_selection.py`) — discovery/
+- Task 002A: 48 tests (`tests/unit/test_camera_selection.py`) — discovery/
   assignment/rescan/error paths, handle release on every path, atomic +
   field-preserving config write, cancel-never-writes, malformed-config
   safety, CLI precedence, noninteractive gating, calibration identity
-  warnings.
+  warnings, plus the PR #3 round-2 fixes below.
+- PR #3 round 2: 5 tests — `probe_max_index` bounded to 0..9 (B3) and
+  fail-closed camera selection (`TestFailClosed`: RUN_ME and CLI `--camera-pick`
+  never start tracking on cancel or failure; B1).
 
 ## Environment (latest run — Task 002A)
 
@@ -93,7 +96,9 @@ Python 3.10.11, pytest 9.1.1, NumPy 2.2.6, OpenCV 4.13.0.
 | E5 — config persistence keeps unrelated fields; cancel never writes; failed write never corrupts | `TestSaveCameraChoice` (`test_preserves_unrelated_fields_and_updates_cameras`, `test_malformed_config_raises_and_leaves_file_untouched`, `test_failed_write_does_not_corrupt_previous_config`), `TestRunCameraSelection::test_cancel_never_writes_config` |
 | E6 — CLI override / noninteractive entry works, never blocks on GUI | `TestNoninteractiveSafety` (flagless CLI never offers selection; `--camera-pick` enables; explicit `--left-cam`/`--right-cam` override; `startup_pick` config + `STEREO_POSE_NO_CAMERA_PICK` env; CLI help lists the flag) |
 | E7 — NPZ camera-index mismatch warning shown without discarding calibration | `TestCalibrationIdentityWarning` (mismatch banner, silent-on-match, missing-camera-fields warning, runner banner without discarding) |
-| E8 — existing Task 002 deterministic suite continues to pass | full suite: 176 passed, 0 failed |
+| E8 — existing Task 002 deterministic suite continues to pass | full suite: 181 passed, 0 failed |
+| B1 — cancelling/failing camera selection must never start tracking | `TestFailClosed` (CLI `--camera-pick` cancel + failure, RUN_ME cancel + failure all assert the tracking entry point is never called) |
+| B3 — `probe_max_index` bounded to the 0..9 single-digit picker keys | `test_probe_max_index_boundary_accepted` (0 and 9 valid), `test_bad_probe_max_index_raises` (10 invalid) |
 
 ## Untested hardware/physical paths
 
