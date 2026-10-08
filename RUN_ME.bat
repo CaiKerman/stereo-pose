@@ -6,6 +6,10 @@ title Stereo Pose - RUN ME
 echo ================================================================
 echo Stereo Pose Task002 - metric validation + joint diagnostics
 echo This test does NOT pip-install the project.
+echo.
+echo A camera selection window opens FIRST: pick your two USB
+echo webcams as LEFT / RIGHT by pressing their CAM numbers,
+echo then press ENTER to confirm.
 echo ================================================================
 echo.
 

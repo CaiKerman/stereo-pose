@@ -23,6 +23,14 @@ DEFAULT_CONFIG: dict = {
         "fourcc": "MJPG",
         "buffer_size": 1,
         "alternate_grab_order": True,
+        "selection": {
+            # Task 002A: interactive LEFT/RIGHT camera picker offered by RUN_ME.
+            "startup_pick": True,
+            # Probe OpenCV indexes 0..probe_max_index when discovering cameras.
+            "probe_max_index": 7,
+            # Reads attempted before declaring an opened camera "no frames".
+            "first_frame_attempts": 5,
+        },
     },
     "pose": {
         "model": "yolo11n-pose.pt",
@@ -214,6 +222,13 @@ def validate_config(cfg: dict) -> None:
         _err(errors, "camera.fourcc", "must be a 4-character ASCII code (e.g. 'MJPG')")
     _int(c.get("buffer_size"), "camera.buffer_size", errors, lo=1)
     _bool(c.get("alternate_grab_order"), "camera.alternate_grab_order", errors)
+    sel = c.get("selection", {})
+    if not isinstance(sel, dict):
+        _err(errors, "camera.selection", "must be an object")
+    else:
+        _bool(sel.get("startup_pick"), "camera.selection.startup_pick", errors)
+        _int(sel.get("probe_max_index"), "camera.selection.probe_max_index", errors, lo=0, hi=63)
+        _int(sel.get("first_frame_attempts"), "camera.selection.first_frame_attempts", errors, lo=1, hi=60)
 
     p = cfg.get("pose", {})
     _str(p.get("model"), "pose.model", errors)

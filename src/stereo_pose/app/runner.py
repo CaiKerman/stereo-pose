@@ -14,7 +14,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from stereo_pose.calibration import RuntimeCalibration, newest_calibration, validate_calibration_compatibility
+from stereo_pose.calibration import (
+    RuntimeCalibration,
+    camera_identity_warnings,
+    newest_calibration,
+    validate_calibration_compatibility,
+)
 from stereo_pose.capture.camera import open_camera, read_stereo_pair
 from stereo_pose.config import load_config
 from stereo_pose.filtering import JointSmoother
@@ -71,15 +76,41 @@ def _actual_fps(cap):
         return None
 
 
-def _report_calibration_compatibility(calib_path, active_size, board, fps=None):
+def _report_calibration_compatibility(calib_path, active_size, board, fps=None, camera_indexes=None):
     """Warn (never silently accept) when a calibration's recorded image size,
-    board geometry, or FPS do not match the active capture / configuration."""
+    board geometry, or FPS do not match the active capture / configuration.
+
+    When ``camera_indexes`` (left, right) is given, camera-index identity is
+    also checked and any mismatch is reported as a prominent banner: numeric
+    index equality never proves physical camera identity, and an index change
+    never deletes or rewrites the calibration — the operator decides whether
+    the physical pairing is unchanged or a recalibration is needed.
+    """
     try:
         warnings = validate_calibration_compatibility(calib_path, active_size, board, fps)
         for w in warnings:
             print(f"[warning] {w}")
     except Exception as e:  # noqa: BLE001
         print(f"[warning] could not load calibration metadata for {calib_path}: {e}")
+    if camera_indexes is None:
+        return
+    try:
+        identity = camera_identity_warnings(calib_path, camera_indexes[0], camera_indexes[1])
+    except Exception as e:  # noqa: BLE001
+        print(f"[warning] could not check calibration camera identity for {calib_path}: {e}")
+        return
+    if not identity:
+        return
+    print("=" * 72)
+    print("CALIBRATION / CAMERA PAIRING WARNING")
+    for w in identity:
+        print(f"  - {w}")
+    print("Camera indexes do NOT prove which physical cameras these are.")
+    print("If the same two physical USB cameras and their mounting are unchanged,")
+    print("the calibration may still be valid after re-selecting the new indexes.")
+    print("If the devices, their LEFT/RIGHT order, or the rig geometry changed,")
+    print("recalibrate (C -> R). The saved calibration file was NOT modified.")
+    print("=" * 72)
 
 
 def _run_metric_validation(triangulator, frame_l, frame_r, stereo_cfg, runtime_root, calib_path):
@@ -188,6 +219,7 @@ def run(args, cfg):
         _report_calibration_compatibility(
             calib_path, active_size, (s["board_cols"], s["board_rows"]),
             fps=float(c.get("fps")) if c.get("fps") else None,
+            camera_indexes=(c["left"], c["right"]),
         )
 
     smoother = JointSmoother(
@@ -272,6 +304,7 @@ def run(args, cfg):
                             _report_calibration_compatibility(
                                 calib_path, active_size, (s["board_cols"], s["board_rows"]),
                                 fps=float(c.get("fps")) if c.get("fps") else None,
+                                camera_indexes=(c["left"], c["right"]),
                             )
                             if cl.get("enabled", True):
                                 cleanup_project(
@@ -503,6 +536,21 @@ def run(args, cfg):
         cv2.destroyAllWindows()
 
 
+def should_pick_cameras(args) -> bool:
+    """Whether ``main()`` should run the interactive camera picker.
+
+    Precedence: explicit ``--left-cam``/``--right-cam`` CLI arguments win and
+    suppress the picker entirely; ``--camera-pick`` opts into the interactive
+    selection; without it (the default, noninteractive/automated path) nothing
+    GUI-blocking ever opens.
+    """
+    if not getattr(args, "camera_pick", False):
+        return False
+    if args.left_cam is not None or args.right_cam is not None:
+        return False
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser(description="Stereo camera real-time 3D pose tracker")
     ap.add_argument("--config", default="config.json")
@@ -510,10 +558,25 @@ def main():
     ap.add_argument("--right-cam", type=int)
     ap.add_argument("--device", help="auto / cpu / 0 / 1 ...")
     ap.add_argument("--model")
+    ap.add_argument(
+        "--camera-pick", action="store_true",
+        help="run the visual camera discovery/LEFT-RIGHT selection before "
+             "opening the stereo cameras (skipped when --left-cam/--right-cam "
+             "are given; the confirmed choice is saved to the config)",
+    )
     args = ap.parse_args()
 
     cfg_path = Path(args.config)
     cfg = load_config(cfg_path if cfg_path.exists() else None)
+
+    if getattr(args, "camera_pick", False) and not should_pick_cameras(args):
+        print("[camera-pick] explicit --left-cam/--right-cam given; skipping interactive selection")
+    elif should_pick_cameras(args):
+        from stereo_pose.capture.selection import run_camera_selection
+
+        run_camera_selection(cfg_path)
+        cfg = load_config(cfg_path)  # reload: the confirmed choice was persisted
+
     run(args, cfg)
 
 

@@ -8,7 +8,12 @@
     "backend": "auto",
     "fourcc": "MJPG",
     "buffer_size": 1,
-    "alternate_grab_order": true
+    "alternate_grab_order": true,
+    "selection": {
+      "startup_pick": true,
+      "probe_max_index": 7,
+      "first_frame_attempts": 5
+    }
   },
   "pose": {
     "model": "yolo11n-pose.pt",
