@@ -335,3 +335,21 @@ Test execution for this round (exact, deterministic, no CI claimed):
   environment and none is claimed.
 
 Keep existing `trae/agent-c3dfMx` / PR #3, preserve NPZ calibration and all acceptance gates, no new branches/PRs or merges. After corrections and documented tests, push once and wait for GPT round-2 review.
+
+
+## Task 002B — Reviewer round 2 (2026-10-08)
+
+**Status: CHANGES REQUESTED — B5 confirmed physical-calibration incompatibility. No merge or owner real-S test yet.**
+
+**PR review:** https://github.com/CaiKerman/stereo-pose/pull/3#issuecomment-6061646573
+**Reviewed:** `dae10c2b9c99e57cd36915dff4fbc3141cc7718d`
+
+- [x] B1 raw evidence preservation: `snapshot/v2` keeps finite raw uv/confidence even at zero.
+- [x] B2 general missing/corrupt replay robustness: no unconditional float format on missing values; signed delta and rectified uv cross-checked.
+- [x] B3 source docs and full suite report: `210 passed` self-reported on Linux 3.14.4, no independent CI.
+- [x] B4 real full-loop FPS separate from camera grab-only time; alarms in both M views.
+- [x] Staging/partial save and no-repeat camera read/inference tests.
+- [ ] **B5 BLOCKER: real distortion arrays**: `tools/inspect_snapshot.py::_load_calibration` requires D1/D2 to be 1D, but real `cv2.calibrateCamera/stereoCalibrate` invoked by `calibration/collection.py` returns valid `D1.shape=(1,5)` and `D2.shape=(1,5)` (reproduced on OpenCV 4.13.0). Existing tests use synthetic `np.zeros(5)` and mask the problem. Accept OpenCV valid row/column vectors and test full snapshot-write→offline-replay using `(1,5)` and `(5,1)`. Do NOT change calibration files or quality thresholds. Required for real owner snapshots to replay successfully.
+- [ ] Update **PR #3 body**: currently stale 176-test 002A-only summary despite 210-test 002B records.
+- [ ] After only targeted B5 fix and updated tests/docs, push to existing `trae/agent-c3dfMx` / PR #3 and stop for brief GPT verification. No merge, no new branches or PRs.
+
