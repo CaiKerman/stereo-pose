@@ -42,9 +42,15 @@ class PoseEstimator:
         return results[0], results[1]
 
     @staticmethod
-    def best_person_keypoints(result):
+    def best_person(result):
+        """Return the best-scoring person's keypoints, confidence, chosen
+        index, and the total person detection count.
+
+        ``(keypoints_xy, keypoints_conf, chosen_index, detection_count)``;
+        ``(None, None, None, 0)`` when no person/keypoints are present.
+        """
         if result.keypoints is None or len(result.keypoints) == 0:
-            return None, None
+            return None, None, None, 0
 
         xy = result.keypoints.xy.cpu().numpy()
         conf = result.keypoints.conf
@@ -55,4 +61,9 @@ class PoseEstimator:
 
         scores = conf.mean(axis=1)
         i = int(np.argmax(scores))
-        return xy[i], conf[i]
+        return xy[i], conf[i], i, int(xy.shape[0])
+
+    @staticmethod
+    def best_person_keypoints(result):
+        xy, conf, _, _ = PoseEstimator.best_person(result)
+        return xy, conf
