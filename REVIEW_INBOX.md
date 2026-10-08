@@ -204,3 +204,22 @@ index ≥ 10 could never be selected. `config.py` validation and
 (7) is already in range. Tests cover 0 and 9 as valid, 10 and -1 as invalid.
 
 Do not merge; awaiting reviewer re-review.
+
+
+## Task 002B — New owner assignment (2026-10-08)
+
+**Status: OPEN — IMPLEMENTATION REQUESTED.**
+
+See [GitHub Issue #4](https://github.com/CaiKerman/stereo-pose/issues/4) and `docs/instructions/002B_STEREO_SNAPSHOT_AND_DEBUG_MENU.md`.
+
+Owner specifically requested:
+1. `S` on-demand **single paired-frame snapshot** with left/right raw images, annotated 2D pose, coordinate+confidence+geometry manifest and offline epipolar replay **without recapturing or rerunning YOLO**.
+2. `M` collapsible developer/debug overlay; default uncluttered screen, keep essential health and warnings, all existing hotkeys remain available.
+3. Do NOT lower 3px epipolar gate or any existing measurement thresholds. Do NOT make speculative YOLO joint-order corrections without snapshots.
+4. No new branch/PR or merge. Use existing `trae/agent-c3dfMx` head, PR #3 to `feat/002-metric-validation-diagnostics`; PR #2 remains open/unmerged.
+5. Deterministic tests + Chinese usage guide + review artifacts; await reviewer after push.
+6. Do not save user human images outside project `runtime`, do not upload samples or calibration to GitHub.
+7. Outstanding separate manual UX check: camera-picker cancel/re-scan has not been confirmed by owner.
+
+**Completion conditions:** mark OPEN -> RESOLVED only when snapshot export, offline replay, M panel, tests and documentation are committed. State clearly that real S snapshot still needs owner acceptance.
+
