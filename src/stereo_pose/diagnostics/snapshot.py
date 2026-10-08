@@ -17,25 +17,29 @@ Output layout (under the managed runtime root)::
 The manifest plus ``calibration_snapshot.npz`` are sufficient to re-evaluate
 rectified keypoints and epipolar errors offline with only NumPy and OpenCV
 (see ``tools/inspect_snapshot.py``). The snapshot never overwrites a prior
-snapshot or any calibration artifact.
+snapshot or any calibration artifact. All writes are staged in a ``.partial``
+directory and atomically renamed on completion, so a failed save can never
+leave a half-written folder that looks like valid evidence.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 import cv2
 import numpy as np
 
 from stereo_pose.joints import JOINT_INDEX, JOINT_NAMES
 
-SNAPSHOT_SCHEMA = "stereo_pose_3d/snapshot/v1"
+SNAPSHOT_SCHEMA = "stereo_pose_3d/snapshot/v2"
 
 # Keypoints drawn on the annotated preview with their name + compact confidence.
 ANNOTATED_JOINTS = (
@@ -100,21 +104,35 @@ def _utcoffset_str(now: Optional[datetime]) -> str:
     return "+0000"
 
 
-def _new_snapshot_dir(runtime_root, now: Optional[datetime]) -> Path:
-    """Create a uniquely named snapshot directory without overwriting."""
+def _new_snapshot_dir(runtime_root, now: Optional[datetime]) -> Tuple[Path, Path]:
+    """Reserve a unique staging directory for a new snapshot.
+
+    Returns ``(staging, final)``: everything is written into ``staging`` (whose
+    name ends in ``.partial``) and then atomically renamed to ``final``. A write
+    failure or hard crash can therefore never leave a half-written folder that
+    looks like valid diagnostic evidence — only an explicitly ``.partial``
+    staging directory that is safely removed on ordinary failures.
+    """
     root = _resolved(snapshot_dir(runtime_root))
     root.mkdir(parents=True, exist_ok=True)
     stamp = _utc_now(now).strftime("%Y%m%d_%H%M%S")
     counter = 1
     while True:
-        dest = root / stamp if counter == 1 else root / f"{stamp}_{counter}"
-        if not is_within_snapshot_root(dest, runtime_root):
-            raise SnapshotPathError(f"snapshot destination {dest} escapes {root}")
-        try:
-            dest.mkdir()
-            return dest
-        except FileExistsError:
-            counter += 1
+        name = stamp if counter == 1 else f"{stamp}_{counter}"
+        final = root / name
+        staging = root / f"{name}.partial"
+        if not is_within_snapshot_root(final, runtime_root) or not is_within_snapshot_root(staging, runtime_root):
+            raise SnapshotPathError(f"snapshot destination {final} escapes {root}")
+        if not final.exists() and not staging.exists():
+            staging.mkdir()
+            return staging, final
+        counter += 1
+
+
+def _promote_snapshot(staging: Path, final: Path) -> Path:
+    """Atomically publish a fully written staging directory."""
+    os.replace(staging, final)
+    return final
 
 
 def _atomic_write_bytes(path: Path, data: bytes) -> None:
@@ -154,23 +172,84 @@ def _sha256_file(path: Path) -> Optional[str]:
         return None
 
 
-def _is_missing(uv, conf) -> bool:
-    if uv is None or conf is None:
-        return True
+def _finite_pair(uv) -> Optional[list]:
+    """Return ``[u, v]`` when ``uv`` is a finite 2-vector, else ``None``."""
+    if uv is None:
+        return None
+    try:
+        arr = np.asarray(uv, dtype=float).ravel()
+    except (TypeError, ValueError):
+        return None
+    if arr.size < 2 or not np.all(np.isfinite(arr[:2])):
+        return None
+    return [float(arr[0]), float(arr[1])]
+
+
+def _finite_conf(conf) -> Optional[float]:
+    """Return the confidence as a finite float, else ``None``."""
+    if conf is None:
+        return None
     try:
         c = float(conf)
     except (TypeError, ValueError):
-        return True
-    return bool(np.isnan(c)) or c <= 0.0
+        return None
+    return c if math.isfinite(c) else None
 
 
-def _uv(uv) -> Optional[list]:
-    if uv is None:
-        return None
-    arr = np.asarray(uv, dtype=float)
-    if arr.size < 2 or not np.all(np.isfinite(arr)):
-        return None
-    return [float(arr[0]), float(arr[1])]
+def _observation(pose: "SnapshotPose", i: int, name: str, confidence_threshold=None) -> Dict[str, Any]:
+    """Per-keypoint observation record that preserves the raw evidence.
+
+    Review B1: the raw finite ``uv`` and numeric ``confidence`` are ALWAYS
+    preserved — including Ultralytics zero placeholders (``uv=(0, 0)`` with
+    ``confidence=0.0``) and subthreshold detections — instead of being silently
+    nulled. Usability is expressed by independent fields:
+
+    - ``missing`` / ``missing_reason``: why the keypoint is not usable
+      (absent pose, non-finite uv/confidence, or the ``confidence <= 0``
+      not-detected placeholder);
+    - ``low_confidence``: the keypoint WAS detected but its confidence is
+      below the runner's acceptance ``confidence_threshold``.
+    """
+    uv_raw = None
+    conf_raw = None
+    if pose.keypoints is not None and i < len(pose.keypoints):
+        uv_raw = pose.keypoints[i]
+    if pose.confidence is not None and i < len(pose.confidence):
+        conf_raw = pose.confidence[i]
+
+    uv = _finite_pair(uv_raw)
+    conf = _finite_conf(conf_raw)
+
+    if pose.keypoints is None:
+        reason = "absent pose"
+    elif uv_raw is None:
+        reason = "keypoint not present"
+    elif uv is None:
+        reason = "non-finite uv"
+    elif conf_raw is None:
+        reason = "confidence not present"
+    elif conf is None:
+        reason = "non-finite confidence"
+    elif conf <= 0.0:
+        reason = "confidence <= 0 (zero placeholder / not detected)"
+    else:
+        reason = None
+
+    missing = reason is not None
+    low_conf = bool(
+        not missing
+        and confidence_threshold is not None
+        and conf < float(confidence_threshold)
+    )
+    return {
+        "label": name,
+        "index": i,
+        "uv": uv,
+        "confidence": conf,
+        "missing": missing,
+        "missing_reason": reason,
+        "low_confidence": low_conf,
+    }
 
 
 def compute_epipolar(calibration, uv_left, uv_right) -> Optional[Dict[str, Any]]:
@@ -223,8 +302,10 @@ def calibrate_bundle(triangulator) -> Optional[Dict[str, np.ndarray]]:
 def annotate_frame(frame, keypoints, confidence) -> np.ndarray:
     """Return a copy of ``frame`` with upper-body keypoints labelled.
 
-    Never mutates the caller's raw buffer. Missing / low-confidence keypoints
-    are skipped.
+    Never mutates the caller's raw buffer. Review B1: keypoints whose uv is
+    non-finite (NaN/Inf) or whose confidence is absent/non-positive are skipped
+    safely — a NaN coordinate can never round its way into cv2 drawing calls
+    (which would abort the whole snapshot).
     """
     img = np.array(frame, copy=True)
     if img.ndim == 2:
@@ -235,37 +316,24 @@ def annotate_frame(frame, keypoints, confidence) -> np.ndarray:
         i = JOINT_INDEX[name]
         if i >= len(keypoints):
             continue
-        uv = keypoints[i]
-        conf = None if confidence is None or i >= len(confidence) else confidence[i]
-        if _is_missing(uv, conf):
+        uv = _finite_pair(keypoints[i])
+        conf = None if confidence is None or i >= len(confidence) else _finite_conf(confidence[i])
+        if uv is None or conf is None or conf <= 0.0:
             continue
-        x, y = int(round(float(uv[0]))), int(round(float(uv[1])))
+        x, y = int(round(uv[0])), int(round(uv[1]))
         cv2.circle(img, (x, y), 3, (0, 255, 0), -1)
         cv2.putText(
-            img, f"{name} {float(conf):.2f}", (x + 4, y - 4),
+            img, f"{name} {conf:.2f}", (x + 4, y - 4),
             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA,
         )
     return img
 
 
-def _pose_to_dict(pose: SnapshotPose) -> Dict[str, Any]:
-    keypoints = []
-    n = len(JOINT_NAMES)
-    for i, name in enumerate(JOINT_NAMES):
-        uv = None
-        conf = None
-        if pose.keypoints is not None and i < len(pose.keypoints):
-            uv = pose.keypoints[i]
-        if pose.confidence is not None and i < len(pose.confidence):
-            conf = pose.confidence[i]
-        missing = _is_missing(uv, conf)
-        keypoints.append({
-            "label": name,
-            "index": i,
-            "uv": None if missing else _uv(uv),
-            "confidence": None if (conf is None or missing) else float(conf),
-            "missing": missing,
-        })
+def _pose_to_dict(pose: SnapshotPose, confidence_threshold=None) -> Dict[str, Any]:
+    keypoints = [
+        _observation(pose, i, name, confidence_threshold)
+        for i, name in enumerate(JOINT_NAMES)
+    ]
     return {
         "detections": int(pose.detections),
         "chosen_person_index": pose.chosen_person_index,
@@ -279,26 +347,12 @@ def _joint_entry(
     pose_right: SnapshotPose,
     calibration: Optional[Dict[str, np.ndarray]],
     verdict: Optional[Any],
+    confidence_threshold=None,
 ) -> Dict[str, Any]:
     i = JOINT_INDEX[name]
 
-    def side(pose: SnapshotPose) -> Dict[str, Any]:
-        uv = None
-        conf = None
-        if pose.keypoints is not None and i < len(pose.keypoints):
-            uv = pose.keypoints[i]
-        if pose.confidence is not None and i < len(pose.confidence):
-            conf = pose.confidence[i]
-        missing = _is_missing(uv, conf)
-        return {
-            "label": name,
-            "uv": None if missing else _uv(uv),
-            "confidence": None if (conf is None or missing) else float(conf),
-            "missing": missing,
-        }
-
-    left = side(pose_left)
-    right = side(pose_right)
+    left = _observation(pose_left, i, name, confidence_threshold)
+    right = _observation(pose_right, i, name, confidence_threshold)
 
     rectified = {
         "available": False,
@@ -359,6 +413,7 @@ def save_snapshot(
     verdicts: Iterable[Any],
     triangulator=None,
     calib_path=None,
+    confidence_threshold=None,
     now: Optional[datetime] = None,
 ) -> Path:
     """Write a diagnostic snapshot and return its directory path.
@@ -366,83 +421,105 @@ def save_snapshot(
     All inputs are the exact objects from one tracking iteration. This function
     performs no camera reads and no inference. Any I/O failure raises and is
     handled by the caller so tracking keeps running.
+
+    Review follow-up: all files are first written into a ``.partial`` staging
+    directory and only atomically renamed to the final snapshot folder once
+    complete, so a failed save can never leave a half-written folder that looks
+    like valid evidence (the staging directory is removed on failure; only the
+    freshly created staging directory is ever touched, never a historical
+    snapshot).
+
+    ``confidence_threshold`` is the runner's keypoint acceptance threshold
+    (``pose.keypoint_confidence``); it only annotates the manifest with
+    ``low_confidence`` flags and never gates what raw data is preserved.
     """
-    dest = _new_snapshot_dir(runtime_root, now)
-    _write_image(dest / "left_raw.png", frame_left)
-    _write_image(dest / "right_raw.png", frame_right)
-    _write_image(dest / "left_annotated.png", annotate_frame(frame_left, pose_left.keypoints, pose_left.confidence))
-    _write_image(dest / "right_annotated.png", annotate_frame(frame_right, pose_right.keypoints, pose_right.confidence))
+    staging, final = _new_snapshot_dir(runtime_root, now)
+    try:
+        _write_image(staging / "left_raw.png", frame_left)
+        _write_image(staging / "right_raw.png", frame_right)
+        _write_image(staging / "left_annotated.png", annotate_frame(frame_left, pose_left.keypoints, pose_left.confidence))
+        _write_image(staging / "right_annotated.png", annotate_frame(frame_right, pose_right.keypoints, pose_right.confidence))
 
-    calibration = calibrate_bundle(triangulator)
-    cal_sha = _sha256_file(Path(calib_path)) if calib_path is not None else None
+        calibration = calibrate_bundle(triangulator)
+        cal_sha = _sha256_file(Path(calib_path)) if calib_path is not None else None
 
-    if calibration is not None:
-        np.savez(dest / "calibration_snapshot.npz", **calibration)
+        if calibration is not None:
+            np.savez(staging / "calibration_snapshot.npz", **calibration)
 
-    verdict_map = {getattr(v, "joint_name", None): v for v in verdicts}
+        verdict_map = {getattr(v, "joint_name", None): v for v in verdicts}
 
-    utc_now = _utc_now(now)
-    if wall_timestamp_ns is not None:
-        wall_utc = datetime.fromtimestamp(float(wall_timestamp_ns) / 1e9, tz=timezone.utc).isoformat()
-    else:
-        wall_utc = utc_now.isoformat()
+        utc_now = _utc_now(now)
+        if wall_timestamp_ns is not None:
+            wall_utc = datetime.fromtimestamp(float(wall_timestamp_ns) / 1e9, tz=timezone.utc).isoformat()
+        else:
+            wall_utc = utc_now.isoformat()
 
-    manifest: Dict[str, Any] = {
-        "schema": SNAPSHOT_SCHEMA,
-        "snapshot_id": dest.name,
-        "wall_timestamp_utc": wall_utc,
-        "wall_timestamp_offset": _utcoffset_str(now),
-        "frame_index": int(frame_index),
-        "capture": {
-            "camera": {"left": int(camera_left), "right": int(camera_right)},
-            "backend": backend,
-            "requested_resolution": {"width": int(requested_size[0]), "height": int(requested_size[1])},
-            "actual_resolution": {"width": int(actual_size[0]), "height": int(actual_size[1])},
-            "raw_frame": {
-                "left": {
-                    "width": int(frame_left.shape[1]),
-                    "height": int(frame_left.shape[0]),
-                    "channels": int(frame_left.shape[2]) if frame_left.ndim == 3 else 1,
-                    "transforms": {"mirrored": False, "rotated": False, "cropped": False, "resized": False},
-                },
-                "right": {
-                    "width": int(frame_right.shape[1]),
-                    "height": int(frame_right.shape[0]),
-                    "channels": int(frame_right.shape[2]) if frame_right.ndim == 3 else 1,
-                    "transforms": {"mirrored": False, "rotated": False, "cropped": False, "resized": False},
+        manifest: Dict[str, Any] = {
+            "schema": SNAPSHOT_SCHEMA,
+            "snapshot_id": final.name,
+            "wall_timestamp_utc": wall_utc,
+            "wall_timestamp_offset": _utcoffset_str(now),
+            "frame_index": int(frame_index),
+            "capture": {
+                "camera": {"left": int(camera_left), "right": int(camera_right)},
+                "backend": backend,
+                "requested_resolution": {"width": int(requested_size[0]), "height": int(requested_size[1])},
+                "actual_resolution": {"width": int(actual_size[0]), "height": int(actual_size[1])},
+                "raw_frame": {
+                    "left": {
+                        "width": int(frame_left.shape[1]),
+                        "height": int(frame_left.shape[0]),
+                        "channels": int(frame_left.shape[2]) if frame_left.ndim == 3 else 1,
+                        "transforms": {"mirrored": False, "rotated": False, "cropped": False, "resized": False},
+                    },
+                    "right": {
+                        "width": int(frame_right.shape[1]),
+                        "height": int(frame_right.shape[0]),
+                        "channels": int(frame_right.shape[2]) if frame_right.ndim == 3 else 1,
+                        "transforms": {"mirrored": False, "rotated": False, "cropped": False, "resized": False},
+                    },
                 },
             },
-        },
-        "host_timing": {
-            "wall_timestamp_ns": wall_timestamp_ns,
-            "host_grab_skew_ms": pair_timing.get("host_grab_skew_ms") if pair_timing else None,
-            "pair_cycle_ms": pair_timing.get("pair_cycle_ms") if pair_timing else None,
-            "note": "host observation only; NOT sensor exposure synchronization",
-        },
-        "calibration": {
-            "available": calibration is not None,
-            "path": str(calib_path) if calib_path is not None else None,
-            "sha256": cal_sha,
-            "coordinate_system": "rectified_left_camera",
-            "units": "mm",
-            "stereo_rms": float(triangulator.stereo_rms) if (triangulator is not None and triangulator.stereo_rms is not None) else None,
-            "missing_reason": None if calibration is not None else "no stereo calibration loaded",
-        },
-        "pose": {
-            "left": _pose_to_dict(pose_left),
-            "right": _pose_to_dict(pose_right),
-        },
-        "joints": [
-            _joint_entry(name, pose_left, pose_right, calibration, verdict_map.get(name))
-            for name in selected_joints
-        ],
-    }
-    _write_json(dest / "manifest.json", manifest)
+            "host_timing": {
+                "wall_timestamp_ns": wall_timestamp_ns,
+                "host_grab_skew_ms": pair_timing.get("host_grab_skew_ms") if pair_timing else None,
+                "pair_cycle_ms": pair_timing.get("pair_cycle_ms") if pair_timing else None,
+                "note": (
+                    "host observation only; NOT sensor exposure synchronization. "
+                    "pair_cycle_ms measures the camera grab/retrieve pair only, "
+                    "not the full processing-loop rate."
+                ),
+            },
+            "calibration": {
+                "available": calibration is not None,
+                "path": str(calib_path) if calib_path is not None else None,
+                "sha256": cal_sha,
+                "coordinate_system": "rectified_left_camera",
+                "units": "mm",
+                "stereo_rms": float(triangulator.stereo_rms) if (triangulator is not None and triangulator.stereo_rms is not None) else None,
+                "missing_reason": None if calibration is not None else "no stereo calibration loaded",
+            },
+            "pose": {
+                "confidence_threshold": None if confidence_threshold is None else float(confidence_threshold),
+                "left": _pose_to_dict(pose_left, confidence_threshold),
+                "right": _pose_to_dict(pose_right, confidence_threshold),
+            },
+            "joints": [
+                _joint_entry(name, pose_left, pose_right, calibration, verdict_map.get(name), confidence_threshold)
+                for name in selected_joints
+            ],
+        }
+        _write_json(staging / "manifest.json", manifest)
 
-    _write_text = README_TEMPLATE.format(snapshot_id=dest.name)
-    _atomic_write_bytes(dest / "README.txt", _write_text.encode("utf-8"))
+        _write_text = README_TEMPLATE.format(snapshot_id=final.name)
+        _atomic_write_bytes(staging / "README.txt", _write_text.encode("utf-8"))
 
-    return dest
+        return _promote_snapshot(staging, final)
+    except BaseException:
+        # Only the freshly created staging directory is removed; historical
+        # snapshots and calibrations are never touched.
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
 
 
 README_TEMPLATE = """Stereo diagnostic snapshot — {snapshot_id}
@@ -460,6 +537,13 @@ No camera was re-read and YOLO was never re-run to produce these files.
                                        quality states (plain-text readable)
   calibration_snapshot.npz             self-contained rectification geometry
                                        (absent when no calibration was active)
+
+manifest.json keeps the RAW observed keypoint uv/confidence for every joint —
+including zero-valued "not detected" placeholders (confidence <= 0) — and marks
+usability separately: `missing` + `missing_reason` say why a keypoint is not
+usable, `low_confidence` flags detected-but-subthreshold evidence. A snapshot
+folder only ever appears complete: writes are staged in a `.partial` directory
+and atomically renamed, so any leftover `.partial` directory is a failed save.
 
 Replay the epipolar errors offline with:
 

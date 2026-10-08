@@ -205,6 +205,85 @@
   (0 and 9 valid; B3) and `TestFailClosed` (4 tests asserting tracking never
   starts on CLI/RUN_ME cancel or failure; B1). Full suite: 181 passed.
 
+## Task 002B — on-demand stereo snapshot + collapsible developer overlay (owner request)
+
+### Added
+
+- `src/stereo_pose/diagnostics/snapshot.py` — on-demand single paired-frame
+  diagnostic snapshot (`S` hotkey): writes left/right raw PNGs, annotated
+  PNGs (name + confidence labels), a `stereo_pose_3d/snapshot/v2`
+  `manifest.json` (capture metadata, host timing with an explicit
+  capture-only note for `pair_cycle_ms`, calibration provenance incl.
+  SHA-256, per-keypoint pose observations, per-joint rectified geometry and
+  rejection states), a self-contained `calibration_snapshot.npz`
+  (K/D/R/P matrices, only when a calibration is active), and a `README.txt`.
+  Schema v2 semantics: the RAW finite `uv`/`confidence` are always
+  preserved — including Ultralytics zero placeholders — while usability is
+  expressed by independent `missing`/`missing_reason`/`low_confidence`
+  fields (round-1 B1). All writes are staged in a fresh `<name>.partial`
+  directory and atomically renamed on completion; any failure deletes only
+  that staging directory, so a failed save can never leave a half-written
+  folder that looks like valid evidence (round-1 follow-up).
+- `tools/inspect_snapshot.py` — offline epipolar replay from the saved raw
+  keypoints + `calibration_snapshot.npz`: recomputes rectified uv / signed
+  delta / epipolar error, cross-checks the stored signed deltas AND the
+  stored rectified uv coordinates (`uv_ok` column), and reports structured
+  exit codes: 0 = replayed and matched, 1 = replay impossible
+  (missing/corrupt manifest, unsupported schema, missing/corrupt geometry,
+  bad arguments), 2 = replayed but mismatches. Null/non-numeric stored
+  values render as `n/a` mismatches instead of raising `TypeError`
+  (round-1 B2). Requires only NumPy + OpenCV.
+- Tests: `tests/unit/test_snapshot.py` — 29 deterministic tests (synthetic
+  exact rectified geometry; no camera/torch/CUDA/weights).
+
+### Modified
+
+- `src/stereo_pose/app/runner.py` —
+  - `S` hotkey saves a snapshot from the **already captured** `fl`/`fr`
+    frames and the **already chosen** `pts_l`/`pts_r` keypoints — no second
+    camera read, no second YOLO inference — and passes the runner's
+    `keypoint_confidence` as the manifest's `confidence_threshold`.
+  - `M` hotkey toggles the developer overlay (`build_menu_lines`):
+    collapsed default shows cameras, calibration state, accepted joints,
+    full-loop FPS, live alarms, and the `M: Developer tools` hint; expanded
+    adds device, rejection counts, stereo RMS/epipolar/reprojection, host
+    grab skew, One Euro internals, and the full hotkey row. Alarms are
+    prepended in BOTH views (round-1 B4).
+  - Overlay FPS now reports the measured **full-loop** rate (capture +
+    inference + triangulation + publish + render + waitKey, EMA-smoothed);
+    the capture-only `pair_cycle_ms` is displayed separately as
+    `grab=NNms` in the expanded menu and documented as capture-only in the
+    manifest (round-1 B4: 1000/pair_cycle_ms previously overstated the
+    real frame rate).
+- `README.md`, `README_先看我.txt` — S/M hotkey documentation, snapshot
+  folder layout, offline replay usage (Chinese + English).
+- `REVIEW_INBOX.md`, `TEST_REPORT.md`, PR #3 body — review-handoff
+  artifacts updated for round 1 (round-1 B3).
+
+### Behavior changes
+
+- New hotkeys `S` (snapshot) and `M` (developer overlay toggle) in tracking
+  mode; all existing hotkeys unchanged. Snapshot folders are written under
+  `runtime/diagnostics/snapshots/` only, never overwrite prior snapshots
+  or calibrations, and are never removed by calibration-history cleanup.
+- The tracking overlay FPS is now a measured end-to-end value instead of
+  the capture-only pair cycle; live alarms remain visible with the
+  developer overlay expanded.
+
+### Numerical behavior changes
+
+- None. No camera geometry, pose association, quality threshold, 3 px
+  epipolar gate, v1.2 protocol field, or Task 003 world-coordinate work was
+  touched. The snapshot only records what the live loop already computed.
+
+### Known issues
+
+- The live `S`/`M` paths were NOT exercised on real hardware in this
+  environment (no cameras/model weights); they are covered by the 29
+  deterministic tests (injected synthetic frames/poses/geometry). Real-rig
+  owner acceptance is still pending — see TEST_REPORT.md and
+  REVIEW_INBOX.md.
+
 ---
 
 # Change summary — Task 001

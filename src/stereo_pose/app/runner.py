@@ -71,6 +71,7 @@ def build_menu_lines(
     selected_total,
     rejected_total,
     fps_txt,
+    grab_txt,
     rms_txt,
     epi_txt,
     reproj_txt,
@@ -85,23 +86,31 @@ def build_menu_lines(
 
     Collapsed (default) keeps only camera indexes, calibration state, accepted
     joint count, FPS, live alarms and a compact ``M: Developer tools`` hint.
-    Expanded adds the full hotkey row and smoothing internals. Warnings are
-    always prepended so no important alarm is hidden when collapsed.
+    Expanded adds the full hotkey row and smoothing internals.
+
+    Review B4: ``fps_txt`` is the measured FULL-loop frame rate (capture +
+    inference + triangulation + publish + render), never the camera grab
+    cycle; the grab-only period is shown separately as ``grab_txt`` so the two
+    can no longer be confused. Warnings are ALWAYS prepended in both the
+    collapsed and the expanded view so opening the developer menu can never
+    hide a live alarm.
     """
-    if not menu_expanded:
-        lines = [
+    lines = (
+        [
             f"LEFT={camera_left}  RIGHT={camera_right} | {cal_state} | "
             f"joints={accepted_total}/{selected_total} | {fps_txt} | M: Developer tools",
         ]
-        return list(alarms) + lines
-    return [
-        f"TRACKING | device={device} | {cal_state} | "
-        f"accepted={accepted_total}/{selected_total} rejected={rejected_total} | {fps_txt}",
-        f"Stereo RMS={rms_txt} | epi={epi_txt} | reproj={reproj_txt}",
-        f"host grab skew={skew_txt} (not exposure skew) | {smooth_txt}",
-        f"OneEuro min_cutoff={one_euro_min:g} beta={one_euro_beta:g} d_cutoff={one_euro_d:g}",
-        "S=snapshot  D=joint reasons  V=validate  C=calibrate  P=pin  G=cleanup  F=smoothing  M=collapse  Q/ESC=quit",
-    ]
+        if not menu_expanded
+        else [
+            f"TRACKING | device={device} | {cal_state} | "
+            f"accepted={accepted_total}/{selected_total} rejected={rejected_total} | {fps_txt} | {grab_txt}",
+            f"Stereo RMS={rms_txt} | epi={epi_txt} | reproj={reproj_txt}",
+            f"host grab skew={skew_txt} (not exposure skew) | {smooth_txt}",
+            f"OneEuro min_cutoff={one_euro_min:g} beta={one_euro_beta:g} d_cutoff={one_euro_d:g}",
+            "S=snapshot  D=joint reasons  V=validate  C=calibrate  P=pin  G=cleanup  F=smoothing  M=collapse  Q/ESC=quit",
+        ]
+    )
+    return list(alarms) + lines
 
 
 def _capture_image_size(left, right, requested):
@@ -298,9 +307,25 @@ def run(args, cfg):
     diagnostics_enabled = bool(d.get("enabled", False))
     diag_every = max(1, int(d.get("every_n_frames", 10)))
     menu_expanded = False
+    # Review B4: full-loop FPS. ``pair_cycle_ms`` only times the camera
+    # grab/retrieve pair; presenting 1000/pair_cycle_ms as "fps" overstated
+    # the real rate because it excluded inference, triangulation, publishing,
+    # rendering and the waitKey delay. We measure the whole loop iteration
+    # instead (capture -> inference -> publish -> render -> waitKey) and show
+    # a small EMA so the overlay does not flicker frame to frame.
+    prev_loop_ns = None
+    loop_ema_ms = None
 
     try:
         while True:
+            loop_ns = time.perf_counter_ns()
+            if prev_loop_ns is not None:
+                cycle_ms = (loop_ns - prev_loop_ns) / 1e6
+                loop_ema_ms = cycle_ms if loop_ema_ms is None else (
+                    0.85 * loop_ema_ms + 0.15 * cycle_ms
+                )
+            prev_loop_ns = loop_ns
+
             ok, fl, fr, pair_timing = read_stereo_pair(
                 left, right,
                 alternate_order=alternate_grab,
@@ -528,7 +553,10 @@ def run(args, cfg):
 
             cal_state = "calib=OK" if triangulator is not None else "calib=NONE"
             cycle = pair_timing.get("pair_cycle_ms")
-            fps_txt = "n/a" if not cycle else f"{1000.0 / float(cycle):.0f}fps"
+            # Review B4: fps shows the measured FULL processing-loop rate;
+            # the camera grab pair period is reported separately below.
+            fps_txt = f"{1000.0 / loop_ema_ms:.0f}fps" if loop_ema_ms else "fps n/a"
+            grab_txt = "grab n/a" if not cycle else f"grab={float(cycle):.0f}ms"
             smooth_txt = "F:smoothing ON" if smoother.enabled else "F:smoothing OFF"
 
             alarms = []
@@ -547,6 +575,7 @@ def run(args, cfg):
                 selected_total=len(verdicts),
                 rejected_total=rej_total,
                 fps_txt=fps_txt,
+                grab_txt=grab_txt,
                 rms_txt=rms,
                 epi_txt=epi_txt,
                 reproj_txt=rep_txt,
@@ -629,6 +658,7 @@ def run(args, cfg):
                         verdicts=verdicts,
                         triangulator=triangulator,
                         calib_path=calib_path,
+                        confidence_threshold=kp_conf,
                     )
                     print(f"[snapshot] saved -> {snap_dir}")
                     print(f"[snapshot] offline replay: python tools/inspect_snapshot.py {snap_dir}")

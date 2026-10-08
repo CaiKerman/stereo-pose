@@ -208,7 +208,7 @@ Do not merge; awaiting reviewer re-review.
 
 ## Task 002B — New owner assignment (2026-10-08)
 
-**Status: OPEN — IMPLEMENTATION REQUESTED.**
+**Status: RESOLVED (implementation complete, round-1 fixes applied) — pending reviewer round-2 re-review. Real-hardware S/M acceptance still outstanding (see below).**
 
 See [GitHub Issue #4](https://github.com/CaiKerman/stereo-pose/issues/4) and `docs/instructions/002B_STEREO_SNAPSHOT_AND_DEBUG_MENU.md`.
 
@@ -223,11 +223,21 @@ Owner specifically requested:
 
 **Completion conditions:** mark OPEN -> RESOLVED only when snapshot export, offline replay, M panel, tests and documentation are committed. State clearly that real S snapshot still needs owner acceptance.
 
+Resolution (2026-10-08): snapshot export (`src/stereo_pose/diagnostics/snapshot.py`,
+`stereo_pose_3d/snapshot/v2`), offline replay (`tools/inspect_snapshot.py`), the
+`M` collapsible overlay (`app/runner.py build_menu_lines`), 29 deterministic
+tests (`tests/unit/test_snapshot.py`), and the Chinese/English usage docs are
+all committed on `trae/agent-c3dfMx` targeting PR #3. No camera is re-read and
+YOLO is never re-run on `S` (asserted by `TestSnapshotPurity`); no measurement
+threshold, epipolar gate, or v1.2 protocol behavior was changed. The real `S`
+key has **not** been exercised on hardware in this environment — owner
+acceptance on the real rig is still required before merge.
+
 
 
 ## Task 002B — Reviewer round 1 (2026-10-08)
 
-**Status: CHANGES REQUESTED — do not merge.**
+**Status: all blockers RESOLVED on `trae/agent-c3dfMx` — awaiting reviewer round 2.**
 **PR feedback:** https://github.com/CaiKerman/stereo-pose/pull/3#issuecomment-6057978607
 **Reviewed head:** `5b69259da10848715af18ff776c3e8b9c367b213`
 
@@ -235,11 +245,93 @@ Positive: `S` integrates the current stereo frames and pose outputs without anot
 
 Resolve before user real-S testing:
 
-- [ ] **B1 — RAW DATA LOSS** in `diagnostics/snapshot.py`: `confidence=0.0` causes both original uv and confidence to become null; preserve observed numeric keypoints/confidence (including zeros), distinguish missing vs low confidence, sanitize non-finite uv in annotated image.
-- [ ] **B2 — OFFLINE REPLAY ROBUSTNESS** in `tools/inspect_snapshot.py`: formatting missing signed residual with `:11.4f` throws; handle null/incomplete/corrupt data with interpretable errors and exit codes. Test negative cases and UV replay agreement.
-- [ ] **B3 — MISSING HANDOFF**: update Chinese `README_先看我.txt`, README, CHANGE_SUMMARY, TEST_REPORT (currently stale 181 Task002A tests), this REVIEW_INBOX, and PR #3 body. No CI run on latest PR head was found; report own test execution precisely, never misclaim hardware validation.
-- [ ] **B4 — MISLEADING FPS / HIDDEN ALARMS**: `pair_cycle_ms` measures capture only, not full inference-loop fps. Fix or relabel; expanded M menu must also show critical warnings.
-- [ ] Fix ineffective in-place raw-frame mutation test (compares objects never passed into snapshot call), and add targeted tests confirming no second camera read/YOLO run on S.
-- [ ] Make failed snapshot writes unambiguously incomplete or remove only newly created partial directory safely; never affect historical snapshots.
+- [x] **B1 — RAW DATA LOSS** in `diagnostics/snapshot.py`: `confidence=0.0` causes both original uv and confidence to become null; preserve observed numeric keypoints/confidence (including zeros), distinguish missing vs low confidence, sanitize non-finite uv in annotated image.
+
+  Resolution: snapshot schema bumped to `stereo_pose_3d/snapshot/v2`. The new
+  `_observation` record ALWAYS keeps the raw finite `uv` and numeric
+  `confidence` — including the Ultralytics zero placeholder (`uv=(0,0)`,
+  `confidence=0.0`) and subthreshold detections. Usability is expressed by
+  independent fields: `missing` + `missing_reason` (absent pose / non-finite
+  uv / non-finite confidence / `confidence <= 0` zero placeholder) and
+  `low_confidence` (detected but below the runner's
+  `pose.keypoint_confidence`, now passed to `save_snapshot` as
+  `confidence_threshold`). `annotate_frame` skips non-finite or
+  non-positive-confidence keypoints safely, so a NaN coordinate can never
+  abort the whole snapshot. Tests: `TestRawEvidencePreserved` (zero
+  placeholder kept, NaN/Inf uv marked missing while siblings survive,
+  subthreshold flagged `low_confidence` with raw values kept, absent pose
+  reason, non-finite annotation never crashes).
+
+- [x] **B2 — OFFLINE REPLAY ROBUSTNESS** in `tools/inspect_snapshot.py`: formatting missing signed residual with `:11.4f` throws; handle null/incomplete/corrupt data with interpretable errors and exit codes. Test negative cases and UV replay agreement.
+
+  Resolution: `tools/inspect_snapshot.py` rewritten with structured
+  `ReplayError` handling: missing/corrupt manifest, unsupported schema, and
+  missing/corrupt/wrong-shape calibration NPZ all print an interpretable
+  one-line error and exit 1 (never a traceback). Stored values are read
+  through `_as_float`/`_fmt` so null or non-numeric residuals render as
+  `n/a` and are reported as mismatches instead of raising `TypeError`. Exit
+  codes: 0 = replayed and matched, 1 = replay impossible, 2 = replayed but
+  mismatching stored values. The replay now also cross-checks the stored
+  rectified `uv_left`/`uv_right` against the recomputation (new `uv_ok`
+  column), beyond the signed-delta check. Tests:
+  `TestOfflineReplayRobustness` (missing manifest, corrupt manifest, wrong
+  schema, corrupt NPZ, tampered stored delta, tampered rectified uv,
+  missing stored residual, nonexistent path — each asserting exit code and
+  message, no traceback) plus the positive CLI match asserting `uv_ok`.
+
+- [x] **B3 — MISSING HANDOFF**: update Chinese `README_先看我.txt`, README, CHANGE_SUMMARY, TEST_REPORT (currently stale 181 Task002A tests), this REVIEW_INBOX, and PR #3 body. No CI run on latest PR head was found; report own test execution precisely, never misclaim hardware validation.
+
+  Resolution: `README_先看我.txt` (S/M usage in Chinese), `README.md`
+  (hotkeys, snapshot folder layout, offline replay), `CHANGE_SUMMARY.md`
+  (Task 002B section), `TEST_REPORT.md` (exact commands, 210-test result,
+  per-requirement coverage, honest untested-hardware list), this file, and
+  the PR #3 body are all updated with this push. Test execution reported
+  precisely below and in TEST_REPORT.md; no hardware validation is claimed.
+
+- [x] **B4 — MISLEADING FPS / HIDDEN ALARMS**: `pair_cycle_ms` measures capture only, not full inference-loop fps. Fix or relabel; expanded M menu must also show critical warnings.
+
+  Resolution: the overlay FPS is now the measured **full-loop** rate: the
+  runner timestamps each complete iteration (capture + inference +
+  triangulation + publish + render + waitKey) and shows an EMA-derived fps.
+  The grab-only period is displayed separately as `grab=NNms` in the
+  expanded menu (and its manifest field `host_timing.pair_cycle_ms` is
+  documented as capture-only). Warnings are now prepended in BOTH the
+  collapsed and the expanded `M` view, so opening the developer menu can
+  never hide a live alarm. Tests: `TestMenuLines` (expanded view contains
+  full-loop fps + separate grab period; expanded alarms are prepended as
+  the first line).
+
+- [x] Fix ineffective in-place raw-frame mutation test (compares objects never passed into snapshot call), and add targeted tests confirming no second camera read/YOLO run on S.
+
+  Resolution: `test_writes_expected_files_and_raw_frames_unchanged` now
+  creates its own buffers, passes those exact objects into `save_snapshot`
+  via the `_save(frames=...)` injection, and asserts the very same objects
+  afterwards. `TestSnapshotPurity` adds the targeted no-second-read /
+  no-second-inference assertions: the snapshot module has no
+  `VideoCapture`/`PoseEstimator`/`infer_pair` dependency and
+  `save_snapshot` takes no camera handle; the runner's `S` handler contains
+  no `read_stereo_pair`/`infer_pair` call and passes the already-captured
+  `fl`/`fr` frames and already-chosen `pts_l`/`pts_r` keypoints.
+
+- [x] Make failed snapshot writes unambiguously incomplete or remove only newly created partial directory safely; never affect historical snapshots.
+
+  Resolution: every save writes into a fresh `<name>.partial` staging
+  directory and is atomically renamed (os.replace) to the final folder only
+  after ALL files are written. Any failure deletes only that freshly created
+  staging directory and re-raises, so historical snapshots are never touched
+  and no half-written folder can look like valid evidence; a leftover
+  `.partial` directory is unambiguously a failed save. Tests:
+  `TestAtomicSnapshotWrite` (failed save leaves no `.partial` and publishes
+  nothing; a failed save never disturbs a prior snapshot; retry after
+  failure publishes exactly one complete folder).
+
+Test execution for this round (exact, deterministic, no CI claimed):
+
+- `python -m pytest tests/unit/test_snapshot.py -q` → 29 passed
+- `python -m pytest tests/ -q` (full suite) → **210 passed, 0 failed, 0 skipped**
+  (~2.2s, Linux container, Python 3.14.4, NumPy 2.5.3, OpenCV 5.0.0 headless;
+  torch/ultralytics/CUDA/cameras NOT installed — see TEST_REPORT.md).
+- No live-camera or real-`S` hardware validation was performed in this
+  environment and none is claimed.
 
 Keep existing `trae/agent-c3dfMx` / PR #3, preserve NPZ calibration and all acceptance gates, no new branches/PRs or merges. After corrections and documented tests, push once and wait for GPT round-2 review.

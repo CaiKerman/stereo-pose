@@ -22,13 +22,17 @@ source-path bootstrap and cannot import `stereo_pose`.
 
 ## Results
 
-Latest full-suite run (after PR #3 camera-selection fixes):
+Latest full-suite run (after Task 002B implementation + round-1 review fixes):
 
-- Ran: 181 tests
-- Passed: 181
+- Ran: 210 tests
+- Passed: 210
 - Failed: 0
 - Skipped: 0
-- Duration: ~0.7s (pytest)
+- Duration: ~2.2s (pytest)
+
+Task 002B snapshot/debug-menu tests: 29 (`tests/unit/test_snapshot.py`,
+`python -m pytest tests/unit/test_snapshot.py -q` → 29 passed). All other
+181 tests (Task 001 + 002 + 002A) are unchanged and still pass.
 
 `test_rejects_symlink_escape` now runs and passes on this platform (Linux,
 symlinks allowed); it also became deterministic — the symlink target's mtime is
@@ -37,7 +41,7 @@ follows the link, and tied timestamps let directory order decide which file
 was "newest".
 
 Task 002 round 1 previously ran 133 tests (132 passed, 1 skipped on Windows
-where symlinks need elevation). New test totals:
+where symlinks need elevation). Test totals by area:
 
 - Task 002 core: 33 tests (`test_joint_rejection.py`,
   `test_metric_validation.py`, `test_diagnostics_render.py`,
@@ -51,8 +55,13 @@ where symlinks need elevation). New test totals:
 - PR #3 round 2: 5 tests — `probe_max_index` bounded to 0..9 (B3) and
   fail-closed camera selection (`TestFailClosed`: RUN_ME and CLI `--camera-pick`
   never start tracking on cancel or failure; B1).
+- Task 002B: 29 tests (`tests/unit/test_snapshot.py`) — see the coverage
+  table below; includes the round-1 review fixes (B1 raw-evidence
+  preservation, B2 replay robustness/exit codes, B4 full-loop FPS +
+  expanded-menu alarms, atomic staged writes, effective mutation test,
+  S-purity/no-second-read/no-YOLO).
 
-## Environment (latest run — Task 002A)
+## Environment (latest run — Task 002B round-1 fixes)
 
 - OS: Linux (container sandbox)
 - Python: 3.14.4 (CPython)
@@ -100,10 +109,41 @@ Python 3.10.11, pytest 9.1.1, NumPy 2.2.6, OpenCV 4.13.0.
 | B1 — cancelling/failing camera selection must never start tracking | `TestFailClosed` (CLI `--camera-pick` cancel + failure, RUN_ME cancel + failure all assert the tracking entry point is never called) |
 | B3 — `probe_max_index` bounded to the 0..9 single-digit picker keys | `test_probe_max_index_boundary_accepted` (0 and 9 valid), `test_bad_probe_max_index_raises` (10 invalid) |
 
+## Coverage by requirement (Task 002B + round-1 review)
+
+| Requirement | Test(s) |
+|---|---|
+| exact synthetic geometry round-trips through `compute_epipolar` | `TestComputeEpipolar` (`test_known_delta`, `test_non_finite_returns_none`) |
+| snapshot writes all expected files; caller's raw frame buffers never mutated | `TestSaveSnapshot::test_writes_expected_files_and_raw_frames_unchanged` (asserts the exact buffers passed into `save_snapshot`) |
+| manifest schema v2, joint mapping, rectified geometry | `TestSaveSnapshot::test_manifest_maps_joints_and_schema` |
+| no active calibration is recorded with an explicit reason | `TestSaveSnapshot::test_no_calibration_reason` |
+| snapshots never overwrite each other and stay inside the managed root | `TestSaveSnapshot::test_no_overwrite_and_containment` |
+| calibration-history cleanup never deletes snapshots | `TestSaveSnapshot::test_cleanup_does_not_delete_snapshots` |
+| B1 — raw zero-placeholder uv/confidence preserved, missing reason recorded | `TestSaveSnapshot::test_manifest_maps_joints_and_schema`, `TestRawEvidencePreserved` |
+| B1 — non-finite uv marked missing; sibling keypoints survive | `TestRawEvidencePreserved::test_nan_uv_is_missing_but_valid_keypoints_survive` |
+| B1 — subthreshold confidence flagged `low_confidence`, raw values kept | `TestRawEvidencePreserved::test_subthreshold_confidence_flagged_but_preserved` |
+| B1 — absent pose recorded as `absent pose` | `TestRawEvidencePreserved::test_absent_pose_marked_missing` |
+| B1 — non-finite uv/confidence never crash `annotate_frame` | `TestRawEvidencePreserved::test_annotate_frame_skips_non_finite_without_crashing` |
+| atomic writes: failed save leaves no `.partial`, publishes nothing | `TestAtomicSnapshotWrite::test_failed_save_leaves_no_partial_directory` |
+| atomic writes: failed save never disturbs prior snapshots | `TestAtomicSnapshotWrite::test_failed_save_never_touches_previous_snapshots` |
+| atomic writes: retry after failure publishes exactly one complete folder | `TestAtomicSnapshotWrite::test_failed_save_can_retry_with_fresh_directory` |
+| offline replay matches stored values incl. rectified uv cross-check | `TestOfflineReplay::test_inspect_snapshot_cli_matches` (`uv_ok`, exit 0) |
+| no-calibration snapshot cannot be replayed (exit 1) | `TestOfflineReplay::test_inspect_snapshot_cli_no_calibration` |
+| B2 — missing manifest / corrupt manifest / bad schema / corrupt NPZ / bad path → exit 1, no traceback | `TestOfflineReplayRobustness` (`test_missing_manifest_directory_exit_1`, `test_corrupt_manifest_exit_1`, `test_unsupported_schema_exit_1`, `test_corrupt_calibration_npz_exit_1`, `test_nonexistent_path_exit_1`) |
+| B2 — null stored residual reported as mismatch (exit 2), no `TypeError` | `TestOfflineReplayRobustness::test_missing_stored_residual_reported_not_crash` |
+| B2 — tampered stored delta / tampered rectified uv → exit 2 with explicit diff | `TestOfflineReplayRobustness` (`test_tampered_stored_delta_exit_2`, `test_tampered_rectified_uv_exit_2`) |
+| S purity — snapshot module has no camera/inference dependency | `TestSnapshotPurity::test_snapshot_module_has_no_camera_or_inference_dependencies` |
+| S purity — runner S handler reuses captured frames/pose, no second read/inference | `TestSnapshotPurity::test_runner_s_handler_reuses_captured_data_only` |
+| B4 — collapsed menu keeps alarms + hint | `TestMenuLines::test_collapsed_keeps_warnings_and_hint` |
+| B4 — expanded menu shows full-loop fps + separate grab period | `TestMenuLines::test_expanded_has_hotkeys_and_internals` |
+| B4 — expanded menu also prepends live alarms | `TestMenuLines::test_expanded_also_prepends_alarms` |
+
 ## Untested hardware/physical paths
 
-- Live two-webcam acquisition, real-time tracking, and the `D`/`V` hotkeys
-  (require cameras).
+- Live two-webcam acquisition, real-time tracking, and the `D`/`V`/`S`/`M`
+  hotkeys (require cameras).
+- A real `S` snapshot on the physical rig (real imagery through the live
+  pipeline; the deterministic tests inject synthetic frames/poses/geometry).
 - Real checkerboard metric validation on hardware (requires a printed 25 mm
   board + cameras + a solved calibration).
 - CUDA device selection and actual YOLO inference (require torch + weights).

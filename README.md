@@ -98,6 +98,31 @@ variable `STEREO_POSE_NO_CAMERA_PICK` force-disables the startup picker.
 Run-time generated artifacts (calibrations, sessions, logs, captures) stay
 under `runtime/` and are not committed.
 
+### Tracking hotkeys and on-demand snapshots
+
+During tracking, `S` saves a single paired-frame diagnostic snapshot into
+`runtime/diagnostics/snapshots/<timestamp>/`: left/right raw PNGs, annotated
+PNGs (keypoint name + confidence), a versioned `manifest.json`
+(`stereo_pose_3d/snapshot/v2`) that always preserves the RAW observed
+keypoint uv/confidence (including zero-confidence placeholders) and marks
+usability separately (`missing`/`missing_reason`/`low_confidence`), plus a
+self-contained `calibration_snapshot.npz` when a calibration is active. The
+snapshot reuses the already-captured frames and the already-completed pose
+inference — no second camera read, no second YOLO pass. Writes are staged in
+a `.partial` directory and atomically renamed, so a failed save can never
+leave a half-written folder. Replay the epipolar evidence offline with
+`python tools/inspect_snapshot.py <snapshot_dir>` (NumPy + OpenCV only; exit
+0 = matched, 1 = replay impossible, 2 = stored values mismatch). `M`
+toggles the developer overlay: the collapsed default keeps the display
+uncluttered (cameras, calibration state, accepted joints, full-loop FPS,
+live warnings); the expanded view adds rejection counts, stereo
+RMS/epipolar/reprojection, host grab skew, One Euro internals, the
+capture-only grab period, and the full hotkey row. Live warnings are always
+shown in both views, and the reported FPS is the measured end-to-end loop
+rate, not the camera capture cycle.
+
+Snapshot folders contain human imagery — never commit or upload them.
+
 ## Running tests
 
 ```bash
