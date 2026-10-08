@@ -100,7 +100,7 @@ Do not merge until those two live paths are exercised.
 
 ## Task 002A — Multi-camera selection on 3-camera laptop (OWNER REQUEST, PRE-TEST BLOCKER)
 
-**Status: OPEN — implementation required before real-hardware D/V testing.**
+**Status: RESOLVED — pending reviewer re-review.**
 
 The test laptop has **one integrated camera + two USB webcams**. The user must be able to **visually identify all available feeds and select distinct LEFT and RIGHT USB webcams** without Git, manual camera index editing, or pip installation.
 
@@ -118,4 +118,46 @@ Minimum acceptance:
 6. Deterministic tests + user documentation + update CHANGE_SUMMARY / TEST_REPORT / REVIEW_FOR_OWNERS.
 7. Push changes to **this existing PR #2** and mark this item **RESOLVED — pending reviewer re-review**. **Do not merge.**
 
-Reviewer will approve this incremental pretest change, then owner will run D and V using the two selected external webcams. Do not start Task 003 yet.
+Resolution (2026-10-08):
+
+- `src/stereo_pose/capture/selection.py` implements the full picker:
+  `discover_cameras` probes `0..camera.selection.probe_max_index` (default 7,
+  configurable; sparse indexes naturally supported) and keeps only cameras
+  that open **and deliver a frame** (`first_frame_attempts`, default 5);
+  `CameraSelectionSession` is a pure state machine — number keys assign LEFT
+  then RIGHT, duplicates rejected, `U` undo, `R` rescan, `ENTER` confirm,
+  `Q`/`ESC` cancel; `render_canvas` composes labeled live tiles (`CAM n` +
+  LEFT green / RIGHT blue) with a status/instruction bar — visual
+  identification, no device-name dependency.
+- Every probe handle is released on every path (confirm / cancel / rescan /
+  error / loop-limit) before the stereo `open_camera` calls, asserted by tests.
+- `save_camera_choice` atomically persists `camera.left`/`camera.right`
+  (temp file + `os.replace`), preserves unrelated fields verbatim, never
+  writes on cancel, and a failed/malformed write leaves the previous config
+  intact.
+- `RUN_ME.bat`/`RUN_ME.py` open the picker before doctor/tracking
+  (`camera.selection.startup_pick`, default true; disable via config or
+  `STEREO_POSE_NO_CAMERA_PICK`); a picker crash never blocks startup. The
+  project CLI gains an opt-in `--camera-pick`; explicit `--left-cam`/
+  `--right-cam` always win; flag-less CLI never opens a GUI.
+- `calibration/metadata.py:camera_identity_warnings` + `app/runner.py`
+  surface a prominent startup banner when the active NPZ's recorded
+  left/right indexes mismatch (or are unverifiable). Warn-only: no NPZ is
+  deleted, rewritten, or auto-invalidated; numeric index equality is never
+  claimed to prove physical identity.
+- No new dependencies, no runtime pip, no GUI framework beyond OpenCV
+  `imshow`/`waitKey`, no numerical threshold changes.
+- Tests: `tests/unit/test_camera_selection.py` — 43 deterministic tests with
+  injected fake cameras/UI covering all instruction section E items (E1–E8);
+  full suite 176 passed / 0 failed / 0 skipped. User documentation:
+  `README_先看我.txt` (visual picking steps + 3-camera manual acceptance
+  checklist + calibration-identity reminder), `README.md`,
+  `docs/architecture/DATA_FLOW.md`; `CHANGE_SUMMARY.md` / `TEST_REPORT.md` /
+  `REVIEW_FOR_OWNERS.md` updated.
+- Pre-existing `test_rejects_symlink_escape` made deterministic (aged symlink
+  target mtime; no product code change) — it now runs and passes on Linux.
+
+Remaining for the owner (cannot be claimed without hardware): physically run
+the 3-camera manual acceptance checklist in `README_先看我.txt`, then the D/V
+real-hardware acceptance. Commits `1c73556` (implementation) + docs commit on
+top target PR #2; do not merge until the reviewer re-approves.

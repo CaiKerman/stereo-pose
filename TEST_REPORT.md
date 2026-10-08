@@ -22,44 +22,50 @@ source-path bootstrap and cannot import `stereo_pose`.
 
 ## Results
 
-- Ran: 133 tests
-- Passed: 132
+Latest full-suite run (after Task 002A camera selection):
+
+- Ran: 176 tests
+- Passed: 176
 - Failed: 0
-- Skipped: 1 (`test_rejects_symlink_escape` — symlinks not supported on this
-  platform without elevation)
-- Duration: ~3.1s (pytest), ~0.7s (unittest)
+- Skipped: 0
+- Duration: ~0.6s (pytest)
 
-New in Task 002 (33 tests):
+`test_rejects_symlink_escape` now runs and passes on this platform (Linux,
+symlinks allowed); it also became deterministic — the symlink target's mtime is
+aged explicitly because the cleanup candidate sort key `stat().st_mtime`
+follows the link, and tied timestamps let directory order decide which file
+was "newest".
 
-- `tests/unit/test_joint_rejection.py` — per-joint terminal-state classifier,
-  coarse-bucket mapping, and no-behaviour-change parity with
-  `evaluate_measurement`.
-- `tests/unit/test_metric_validation.py` — exact/noisy synthetic checkerboard
-  reconstruction, plane fit, scale error, missing corners.
-- `tests/unit/test_diagnostics_render.py` — diagnostic summary + aggregate text.
-- `tests/unit/test_validation_report.py` — JSON round-trip and managed-root
-  path containment.
+Task 002 round 1 previously ran 133 tests (132 passed, 1 skipped on Windows
+where symlinks need elevation). New test totals:
 
-Added in review round 1 (4 tests, `tests/unit/test_metric_validation.py`,
-`TestCorrespondenceNormalization`):
+- Task 002 core: 33 tests (`test_joint_rejection.py`,
+  `test_metric_validation.py`, `test_diagnostics_render.py`,
+  `test_validation_report.py`).
+- Review round 1: 4 correspondence-normalization tests.
+- Task 002A: 43 tests (`tests/unit/test_camera_selection.py`) — discovery/
+  assignment/rescan/error paths, handle release on every path, atomic +
+  field-preserving config write, cancel-never-writes, malformed-config
+  safety, CLI precedence, noninteractive gating, calibration identity
+  warnings.
 
-- `test_direct_ordering_selects_direct`
-- `test_reversed_right_ordering_is_corrected`
-- `test_implausible_correspondence_fails_cleanly`
-- `test_reversed_right_recovers_expected_grid_metric`
+## Environment (latest run — Task 002A)
 
-## Environment
-
-- OS: Windows 10 Pro
-- Python: 3.10.11 (CPython)
-- pytest: 9.1.1
-- NumPy: 2.2.6
-- OpenCV (cv2): 4.13.0
+- OS: Linux (container sandbox)
+- Python: 3.14.4 (CPython)
+- pytest: 9.0.3
+- NumPy: 2.5.3
+- OpenCV (cv2): 5.0.0 (headless; no GUI windows exercised in tests)
 - torch: NOT installed
 - ultralytics: NOT installed
 - CUDA: not available (not present)
 
-Tests run with no webcams, no CUDA, and no model weights.
+Tests run with no webcams, no CUDA, and no model weights. The camera-selection
+tests inject fake open/read/release/waitKey/show functions — no real devices
+and no display are required.
+
+Environment of the Task 002 round-1 run (for reference): Windows 10 Pro,
+Python 3.10.11, pytest 9.1.1, NumPy 2.2.6, OpenCV 4.13.0.
 
 ## Coverage by requirement (Task 002, Part C)
 
@@ -76,6 +82,19 @@ Tests run with no webcams, no CUDA, and no model weights.
 | output path stays inside managed validation root | `test_validation_report.py::TestReportPersistence` |
 | correspondence normalization (direct / reversed_180 / implausible) | `test_metric_validation.py::TestCorrespondenceNormalization` |
 
+## Coverage by requirement (Task 002A, instruction section E)
+
+| Requirement | Test(s) |
+|---|---|
+| E1 — 3 detected inputs, user picks LEFT=1 / RIGHT=2, confirmed order reaches startup | `TestRunCameraSelection::test_confirm_persists_choice_and_feeds_startup_config`, `TestDiscovery::test_three_cameras_all_usable` |
+| E2 — sparse indexes; opens-but-no-frames device excluded; <2 usable cameras handled | `TestDiscovery` (`test_sparse_indexes_supported`, `test_opens_but_no_frames_is_not_usable_and_released`, `test_read_error_is_not_usable_and_released`), `TestRunCameraSelection::test_fewer_than_two_cameras_warns_and_cancel_keeps_config` |
+| E3 — same camera for both roles rejected | `TestSessionState::test_duplicate_camera_rejected`, `test_enter_requires_complete_assignment` |
+| E4 — preview/cancel/rescan/error paths always release camera resources | `TestRunCameraSelection` (`test_rescan_releases_then_reprobes`, `test_show_error_still_releases_all_handles`, `test_loop_limit_guard`, `test_failed_save_returns_none_and_keeps_previous_config`), `TestDiscovery` release assertions |
+| E5 — config persistence keeps unrelated fields; cancel never writes; failed write never corrupts | `TestSaveCameraChoice` (`test_preserves_unrelated_fields_and_updates_cameras`, `test_malformed_config_raises_and_leaves_file_untouched`, `test_failed_write_does_not_corrupt_previous_config`), `TestRunCameraSelection::test_cancel_never_writes_config` |
+| E6 — CLI override / noninteractive entry works, never blocks on GUI | `TestNoninteractiveSafety` (flagless CLI never offers selection; `--camera-pick` enables; explicit `--left-cam`/`--right-cam` override; `startup_pick` config + `STEREO_POSE_NO_CAMERA_PICK` env; CLI help lists the flag) |
+| E7 — NPZ camera-index mismatch warning shown without discarding calibration | `TestCalibrationIdentityWarning` (mismatch banner, silent-on-match, missing-camera-fields warning, runner banner without discarding) |
+| E8 — existing Task 002 deterministic suite continues to pass | full suite: 176 passed, 0 failed |
+
 ## Untested hardware/physical paths
 
 - Live two-webcam acquisition, real-time tracking, and the `D`/`V` hotkeys
@@ -83,9 +102,10 @@ Tests run with no webcams, no CUDA, and no model weights.
 - Real checkerboard metric validation on hardware (requires a printed 25 mm
   board + cameras + a solved calibration).
 - CUDA device selection and actual YOLO inference (require torch + weights).
-- Symlink-escape path is skipped on this platform (no symlink privilege); the
-  guard logic is still asserted on a resolved-outside path in
-  `test_rejects_dirs_outside_trusted_root_without_deletion`.
+- The interactive camera picker itself on real hardware (real `cv2.imshow`
+  window, real hotplug rescan) — injected-fake tests cover the logic; the
+  3-camera manual acceptance checklist in `README_先看我.txt` is left for the
+  owner to exercise physically.
 
 The deterministic suite exercises all numerical logic that does not require
 hardware or network.

@@ -36,6 +36,36 @@ implementation detail is omitted.
 - Pull request: https://github.com/CaiKerman/stereo-pose/pull/2
 - Head commit SHA (round 1): `9a68f428956a28a2a0d36629bac9810a91a15c31`
 
+## Task 002A — camera discovery & LEFT/RIGHT selection (owner pre-test request)
+
+Implemented per `docs/instructions/002A_CAMERA_SELECTION_PRETEST.md` on the
+same Task 002 branch / PR #2.
+
+### Decisions taken (no new owner input required)
+
+1. **Picker is on by default for the RUN_ME launcher** (`camera.selection.startup_pick: true`) — this is what the owner asked for (double-click, pick, go). It can be disabled via config or `STEREO_POSE_NO_CAMERA_PICK=1`. The project CLI stays opt-in (`--camera-pick`), so automated/noninteractive workflows never see a GUI.
+2. **Index identity ≠ physical identity.** When the active calibration's recorded left/right indexes differ from the selected pair (or are missing), a prominent warning banner is printed at startup. The warning is advisory only: no NPZ is deleted, rewritten, or auto-invalidated. The operator decides whether the physical pairing is unchanged (keep calibration) or to recalibrate.
+3. **No new dependencies / no pip at runtime.** The picker is plain OpenCV (`imshow` + `waitKey`) on the existing capture backend settings.
+
+### Notes / risks
+
+- Numeric camera indexes can change between boots (Windows enumeration). The
+  persisted choice is the current best knowledge; the picker + identity banner
+  is the mitigation. Physical identity cannot be proven programmatically with
+  plain OpenCV on Windows — device names are not reliably exposed.
+- The deterministic suite covers all selection logic with injected fakes; the
+  real 3-camera acceptance (visual tiles, hotplug rescan, actual window) is
+  left to the owner via the checklist in `README_先看我.txt`.
+- One pre-existing test (`test_rejects_symlink_escape`) was made deterministic
+  (aged symlink-target mtime); no product code changed for it.
+
+### Handoff (Task 002A)
+
+- Task branch: `feat/002-metric-validation-diagnostics`
+- Pull request: https://github.com/CaiKerman/stereo-pose/pull/2
+- Head commits (002A): implementation `1c73556` + docs commit on top (see `git log` / PR #2)
+- Not merged; awaiting reviewer re-review.
+
 ## Task 001 — Need decision
 
 1. **Module layout additions beyond the literal skeleton.** The instruction's

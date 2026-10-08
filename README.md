@@ -85,6 +85,16 @@ Put a local pose model (e.g. `yolo11n-pose.pt`) at the path configured in
 python -m stereo_pose run --config config.json
 ```
 
+The bundled `RUN_ME.bat`/`RUN_ME.py` launcher first opens an interactive
+camera-selection window (discover → live preview → assign LEFT/RIGHT by
+number keys; `camera.selection.startup_pick`, default true) so the operator
+can visually pick the two physical cameras without editing config.json. The
+confirmed choice is atomically persisted to the local config; cancelling
+leaves it untouched. From the CLI the picker is opt-in via
+`python -m stereo_pose run --camera-pick` (explicit `--left-cam`/`--right-cam`
+always take precedence; noninteractive runs never open a GUI). The environment
+variable `STEREO_POSE_NO_CAMERA_PICK` force-disables the startup picker.
+
 Run-time generated artifacts (calibrations, sessions, logs, captures) stay
 under `runtime/` and are not committed.
 

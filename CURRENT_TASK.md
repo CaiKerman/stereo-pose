@@ -2,7 +2,7 @@
 
 - **Task ID:** 002
 - **Title:** Metric validation and joint rejection diagnostics
-- **Status:** IN PROGRESS — PRETEST BLOCKER 002A CAMERA SELECTION
+- **Status:** IN PROGRESS — 002A camera selection implemented; awaiting reviewer re-review on PR #2
 - **Target branch:** `feat/002-metric-validation-diagnostics`
 - **Base branch:** `main`
 - **Instruction:** `docs/instructions/002_METRIC_VALIDATION_DIAGNOSTICS.md`
@@ -27,6 +27,8 @@ Task 001 passed real-hardware acceptance. Current stereo metric scale is physica
 Task 002 must make measurement accuracy and rejection reasons observable before world-coordinate work begins.
 
 **Owner request before hardware testing:** user changed laptop and now has an integrated webcam plus two USB webcams. A visual LEFT/RIGHT camera picker must be implemented and reviewed before asking the owner to run D/V tests. Treat `docs/instructions/002A_CAMERA_SELECTION_PRETEST.md` as the immediate implementation priority, on the same feature branch and existing PR #2.
+
+**002A status (2026-10-08):** implemented, tested (176/176), and committed on `feat/002-metric-validation-diagnostics` — see the RESOLVED item in `REVIEW_INBOX.md`. Next steps: push the two commits to PR #2 → reviewer re-review of 002A → owner runs the 3-camera manual acceptance checklist (`README_先看我.txt`) → owner runs the D/V real-hardware acceptance. Do not merge PR #2 before re-review.
 
 ## Completion
 

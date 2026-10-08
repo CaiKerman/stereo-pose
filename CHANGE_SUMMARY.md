@@ -110,6 +110,70 @@
   it never changes the spacing/plane/scale math. No v1.2 output or measurement
   threshold is affected.
 
+## Task 002A — pre-test camera discovery & LEFT/RIGHT selection (owner request)
+
+### Added
+
+- `src/stereo_pose/capture/selection.py` — camera discovery, preview, and
+  interactive LEFT/RIGHT selection: `discover_cameras` (bounded index probing,
+  frame-delivering-only usability, sparse-index support), pure
+  `CameraSelectionSession` state machine (number keys assign LEFT then RIGHT,
+  distinct cameras only; `U` undo, `R` rescan, `ENTER` confirm, `Q`/`ESC`
+  cancel), `render_canvas` (labeled live tiles: `CAM n` + LEFT green / RIGHT
+  blue role tags + status/instruction bar), `save_camera_choice` (atomic
+  temp-file + `os.replace` persistence preserving unrelated fields),
+  `run_camera_selection` (full picker; releases every probe handle on every
+  path), and `selection_requested` (launcher gating). All device/GUI access is
+  injectable for hardware-free deterministic tests.
+- `calibration/metadata.py` — `camera_identity_warnings`: compares the active
+  calibration NPZ's recorded left/right indexes with the currently selected
+  pair; warn-only, never deletes/rewrites the NPZ.
+- Config `camera.selection` section (`startup_pick` default true,
+  `probe_max_index` default 7, `first_frame_attempts` default 5) in
+  `config.py` defaults + validation, `configs/default.json`, and
+  `configs/schemas/default.schema.json`.
+- CLI `--camera-pick` flag on `stereo_pose run` (opt-in; suppressed by explicit
+  `--left-cam`/`--right-cam`).
+- Tests: `tests/unit/test_camera_selection.py` (43 tests: discovery/assignment/
+  rescan/error paths, handle release on every path, atomic + field-preserving
+  config write, cancel-never-writes, malformed-config safety, CLI precedence,
+  noninteractive gating, calibration identity warnings).
+
+### Modified
+
+- `RUN_ME.py` — offers the picker before doctor/tracking when
+  `selection_requested` (default on); failure of the picker never blocks
+  startup; config reloaded after confirmation. `RUN_ME.bat` banner explains
+  the selection step.
+- `app/runner.py` — `--camera-pick` flag; `should_pick_cameras` precedence
+  (explicit CLI indexes > `--camera-pick` > nothing); startup and post-solve
+  calibration compatibility reports now also surface camera-index identity
+  warnings as a prominent banner.
+- `tests/unit/test_cleanup.py::test_rejects_symlink_escape` — made
+  deterministic: the symlink target's mtime is aged explicitly, because
+  the candidate sort key `stat().st_mtime` follows the link and tied
+  timestamps let directory order decide which file was "newest".
+- `README_先看我.txt` (visual LEFT/RIGHT picking instructions + 3-camera
+  manual acceptance checklist + calibration-identity reminder),
+  `README.md`, `docs/architecture/DATA_FLOW.md` (camera-selection path,
+  identity-warning behavior).
+
+### Behavior changes
+
+- `RUN_ME.bat` now opens the visual camera picker by default before tracking
+  (`camera.selection.startup_pick: true`; disable via config or the
+  `STEREO_POSE_NO_CAMERA_PICK` environment variable). Confirmed choices are
+  persisted to the local config.json; cancellation leaves it unchanged.
+- Startup prints a prominent warning banner when the active calibration's
+  recorded camera indexes differ from the selected pair (or cannot be
+  verified). The warning is advisory: no calibration file is deleted,
+  overwritten, or auto-invalidated.
+
+### Numerical behavior changes
+
+- None. No measurement thresholds, quality gates, filters, or v1.2 outputs
+  changed.
+
 ---
 
 # Change summary — Task 001
