@@ -22,6 +22,9 @@ from stereo_pose.calibration import (
 )
 from stereo_pose.capture.camera import open_camera, read_stereo_pair
 from stereo_pose.config import load_config
+from stereo_pose.app.measurements import measure_frame, make_readout, append_readout
+from stereo_pose.app.world_setup import run_world_setup
+from stereo_pose.calibration.package import load_registration, activate_calibration, file_sha256
 from stereo_pose.filtering import JointSmoother
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, resolve_joints
@@ -241,14 +244,21 @@ def run(args, cfg):
 
     device = resolve_device(p["device"])
     selected_joints = resolve_joints(o["joint_group"], o.get("joints") or None)
+    readout_joints = list(dict.fromkeys(["left_eye", "right_eye", "eye_midpoint"] +
+        resolve_joints(cfg["readout"]["joint_group"], cfg["readout"].get("joints") or None)))
+    registration = None
+    world_warnings = []
 
     calib_path = None
     triangulator = None
     try:
         explicit = s.get("explicit_file") if s.get("load") == "explicit" else None
         calib_path = newest_calibration(s["calibration_dir"], explicit)
+        if s.get("load") == "explicit" and s.get("active_sha256") and file_sha256(calib_path) != s["active_sha256"]:
+            raise ValueError("selected calibration SHA-256 mismatch; reselect known artifact, no fallback")
         triangulator = StereoTriangulator(calib_path)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError, OSError) as e:
+        calib_path = None
         print(f"[warning] {e}")
         print("[warning] 3D output disabled until you create a calibration with C -> R.")
 
@@ -276,6 +286,12 @@ def run(args, cfg):
             camera_indexes=(c["left"], c["right"]),
         )
 
+    if calib_path is not None:
+        registration, world_warnings = load_registration(calib_path, active_size)
+        for warning in world_warnings: print("[world]", warning)
+        if registration is not None:
+            print("[world] RESTORED", registration["name"], "| confirm physical cameras/mounting unchanged; file/index cannot prove this")
+
     smoother = JointSmoother(
         enabled=scfg.get("enabled", True),
         min_cutoff=scfg.get("min_cutoff", 1.2),
@@ -297,7 +313,7 @@ def run(args, cfg):
     )
     print(
         "Hotkeys: C=calibration | F=smoothing on/off | G=cleanup | P=pin calib | "
-        "D=diagnostics | V=validate board | S=snapshot | M=dev menu | Q/ESC=quit"
+        "D=diagnostics | V=validate board | S=snapshot | M=dev menu | W=world/zero | T=CSV | Q/ESC=quit"
     )
     print("Calibration: AUTO waits for STABLE | SPACE=manual force capture | R=solve | X=discard | C=return\n")
 
@@ -363,6 +379,12 @@ def run(args, cfg):
                             result = calibrator.solve()
                             triangulator = StereoTriangulator(result["path"])
                             calib_path = result["path"]
+                            registration = None
+                            world_warnings = ["WORLD unavailable after new stereo solve; press W to re-register"]
+                            try:
+                                s.update(activate_calibration(args.config, calib_path))
+                            except Exception as selection_error:
+                                print("[calibration] active for this run only; preference save failed:", selection_error)
                             smoother.reset()
                             speed_gate.reset()
                             print(f"[calibration] ACTIVE switched to {calib_path}")
@@ -401,144 +423,26 @@ def run(args, cfg):
             pts_l, cf_l, chosen_l, count_l = estimator.best_person(res_l)
             pts_r, cf_r, chosen_r, count_r = estimator.best_person(res_r)
 
-            joints = {}
-            rejected = {
-                "keypoint_confidence": 0,
-                "geometry": 0,
-                "depth": 0,
-                "quality_score": 0,
-                "speed": 0,
-            }
-            current_epi = []
-            current_reproj = []
-
-            missing_pose = pts_l is None or pts_r is None
-            verdicts = []
-
-            for name in selected_joints:
-                if triangulator is None or missing_pose:
-                    verdicts.append(
-                        classify_joint(
-                            name,
-                            conf_l=0.0,
-                            conf_r=0.0,
-                            keypoint_confidence=kp_conf,
-                            geometry=None,
-                            qcfg=qcfg,
-                            missing_pose=missing_pose,
-                            calibration_available=triangulator is not None,
-                        )
-                    )
-                    continue
-
-                i = JOINT_INDEX[name]
-                geom = None
-                if cf_l[i] >= kp_conf and cf_r[i] >= kp_conf:
-                    geom = triangulator.triangulate_with_quality(pts_l[i], pts_r[i])
-                    if geom is not None:
-                        current_epi.append(float(geom["epipolar_error_px"]))
-                        current_reproj.append(float(geom["reprojection_error_max_px"]))
-
-                verdict = classify_joint(
-                    name,
-                    conf_l=float(cf_l[i]),
-                    conf_r=float(cf_r[i]),
-                    keypoint_confidence=kp_conf,
-                    geometry=geom,
-                    qcfg=qcfg,
-                )
-
-                if verdict.accepted:
-                    raw_xyz = np.asarray(geom["xyz_mm"], dtype=float)
-                    speed_ok, speed = speed_gate.check(name, raw_xyz, t_filter_s)
-                    if not speed_ok:
-                        verdict = classify_joint(
-                            name,
-                            conf_l=float(cf_l[i]),
-                            conf_r=float(cf_r[i]),
-                            keypoint_confidence=kp_conf,
-                            geometry=geom,
-                            qcfg=qcfg,
-                            speed_result=(False, speed),
-                        )
-                    else:
-                        verdict.metrics["speed_mm_s"] = float(speed)
-                        filtered_xyz = smoother.update(name, raw_xyz, t_filter_s)
-                        epi = float(geom["epipolar_error_px"])
-                        rep = float(geom["reprojection_error_max_px"])
-                        quality = JointQuality(
-                            score=float(verdict.metrics["score"]),
-                            epipolar_error_px=epi,
-                            reprojection_error_mean_px=float(geom["reprojection_error_mean_px"]),
-                            reprojection_error_max_px=rep,
-                            speed_mm_s=float(speed),
-                        )
-                        joint = FilteredJoint3D(
-                            joint_name=name,
-                            xyz_mm=[float(x) for x in filtered_xyz],
-                            xyz_raw_mm=[float(x) for x in raw_xyz],
-                            quality=quality,
-                            confidence_left=float(cf_l[i]),
-                            confidence_right=float(cf_r[i]),
-                            uv_left=(float(pts_l[i][0]), float(pts_l[i][1])),
-                            uv_right=(float(pts_r[i][0]), float(pts_r[i][1])),
-                            rectified_uv_left=(float(geom["rectified_uv_left"][0]), float(geom["rectified_uv_left"][1])),
-                            rectified_uv_right=(float(geom["rectified_uv_right"][0]), float(geom["rectified_uv_right"][1])),
-                        )
-                        joints[name] = joint
-
-                coarse = aggregate_bucket(verdict.state)
-                if coarse:
-                    rejected[coarse] += 1
-                verdicts.append(verdict)
-
-            mean_epi = float(np.mean(current_epi)) if current_epi else None
-            mean_reproj = float(np.mean(current_reproj)) if current_reproj else None
-
-            accepted_count = sum(1 for v in verdicts if v.accepted)
-            fine_aggregate = {}
-            for v in verdicts:
-                if not v.accepted:
-                    fine_aggregate[v.state] = fine_aggregate.get(v.state, 0) + 1
-
-            diagnostics = FrameDiagnostics(
-                selected_joint_count=len(verdicts),
-                accepted_count=accepted_count,
-                rejected_count=len(verdicts) - accepted_count,
-                joints=verdicts,
-                aggregate=fine_aggregate,
-            )
-
-            timing = FrameTiming.from_dict(pair_timing)
-            frame = PoseFrame(
-                frame_index=frame_index,
-                wall_timestamp_ns=wall_timestamp_ns,
-                coordinate_system="rectified_left_camera",
-                unit="mm",
-                calibration_file=str(calib_path) if calib_path else None,
-                timing=timing,
-                filtering={
-                    "enabled": bool(smoother.enabled),
-                    "type": "one_euro",
-                    "min_cutoff": smoother.min_cutoff,
-                    "beta": smoother.beta,
-                    "d_cutoff": smoother.d_cutoff,
-                },
-                frame_quality={
-                    "accepted_joints": len(joints),
-                    "rejected": rejected,
-                    "mean_epipolar_error_px": mean_epi,
-                    "mean_reprojection_error_px": mean_reproj,
-                },
-                joints=joints,
-                diagnostics=diagnostics,
-            )
+            frame, all_accepted, all_verdicts, geometries = measure_frame(
+                selected_joints=selected_joints, readout_joints=readout_joints,
+                triangulator=triangulator, points_left=pts_l, points_right=pts_r,
+                conf_left=cf_l, conf_right=cf_r, kp_conf=kp_conf, qcfg=qcfg,
+                speed_gate=speed_gate, smoother=smoother, t_s=t_filter_s,
+                frame_index=frame_index, wall_timestamp_ns=wall_timestamp_ns,
+                pair_timing=pair_timing, calib_path=calib_path)
+            joints = frame.joints
+            diagnostics = frame.diagnostics
+            verdicts = diagnostics.joints
+            rejected = frame.frame_quality["rejected"]
+            mean_epi = frame.frame_quality["mean_epipolar_error_px"]
+            mean_reproj = frame.frame_quality["mean_reprojection_error_px"]
+            readout_rows = make_readout(readout_joints, all_accepted, all_verdicts, geometries, registration)
             publisher.publish(to_v1_message(frame))
 
             if diagnostics_enabled and frame_index % diag_every == 0:
                 print(format_diagnostic_summary(frame_index, diagnostics))
 
-            vl, vr = resize_pair(res_l.plot(), res_r.plot())
+            vl, vr = resize_pair(res_l.plot(), res_r.plot(), target_h=360)
             canvas = cv2.hconcat([vl, vr])
             rms = (
                 f"{triangulator.stereo_rms:.4f}"
@@ -586,6 +490,7 @@ def run(args, cfg):
                 one_euro_d=smoother.d_cutoff,
                 alarms=alarms,
             ))
+            canvas = append_readout(canvas, readout_rows, registration, world_warnings=world_warnings)
             cv2.imshow("Stereo Pose 3D", canvas)
             key = cv2.waitKey(1) & 0xFF
 
@@ -613,6 +518,21 @@ def run(args, cfg):
                         print(f"[calibration] pin failed: {e}")
                 else:
                     print("[calibration] no active calibration to pin")
+            elif key in (ord("w"), ord("W")):
+                if triangulator is None:
+                    print("[world] create/load stereo calibration first (C -> R)")
+                else:
+                    try:
+                        new_path = run_world_setup(frame_left=fl, frame_right=fr, triangulator=triangulator,
+                            calib_path=calib_path, config_path=args.config, cfg=cfg, registration=registration)
+                        if new_path is not None:
+                            # Setup saves+activates atomically before exposing the new frame.
+                            calib_path = new_path
+                            triangulator = StereoTriangulator(new_path)
+                            s.update(load_config(args.config)["stereo"])
+                            registration, world_warnings = load_registration(new_path, active_size)
+                    except Exception as e:
+                        print("[world] setup failed; previous active retained:", e)
             elif key in (ord("d"), ord("D")):
                 diagnostics_enabled = not diagnostics_enabled
                 print(f"[diagnostics] per-joint view {'ON' if diagnostics_enabled else 'OFF'}")

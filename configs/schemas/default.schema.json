@@ -20,116 +20,341 @@
   "properties": {
     "camera": {
       "type": "object",
-      "required": ["left", "right", "width", "height", "fps", "backend", "fourcc", "buffer_size", "alternate_grab_order"],
+      "required": [
+        "left",
+        "right",
+        "width",
+        "height",
+        "fps",
+        "backend",
+        "fourcc",
+        "buffer_size",
+        "alternate_grab_order"
+      ],
       "properties": {
-        "left": { "type": "integer", "minimum": 0 },
-        "right": { "type": "integer", "minimum": 0 },
-        "width": { "type": "integer", "minimum": 1 },
-        "height": { "type": "integer", "minimum": 1 },
-        "fps": { "type": "number", "exclusiveMinimum": 0 },
-        "backend": { "type": "string", "enum": ["auto", "dshow", "msmf", "v4l2"] },
-        "fourcc": { "type": "string", "minLength": 4, "maxLength": 4 },
-        "buffer_size": { "type": "integer", "minimum": 1 },
-        "alternate_grab_order": { "type": "boolean" },
+        "left": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "right": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fps": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "backend": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "dshow",
+            "msmf",
+            "v4l2"
+          ]
+        },
+        "fourcc": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 4
+        },
+        "buffer_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "alternate_grab_order": {
+          "type": "boolean"
+        },
         "selection": {
           "type": "object",
-          "required": ["startup_pick", "probe_max_index", "first_frame_attempts"],
+          "required": [
+            "startup_pick",
+            "probe_max_index",
+            "first_frame_attempts"
+          ],
           "properties": {
-            "startup_pick": { "type": "boolean" },
-            "probe_max_index": { "type": "integer", "minimum": 0, "maximum": 9 },
-            "first_frame_attempts": { "type": "integer", "minimum": 1, "maximum": 60 }
+            "startup_pick": {
+              "type": "boolean"
+            },
+            "probe_max_index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9
+            },
+            "first_frame_attempts": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+            }
           }
         }
       }
     },
     "pose": {
       "type": "object",
-      "required": ["model", "device", "detection_confidence", "keypoint_confidence"],
+      "required": [
+        "model",
+        "device",
+        "detection_confidence",
+        "keypoint_confidence"
+      ],
       "properties": {
-        "model": { "type": "string", "minLength": 1 },
-        "device": { "type": "string" },
-        "detection_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-        "keypoint_confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "device": {
+          "type": "string"
+        },
+        "detection_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "keypoint_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
       }
     },
     "stereo": {
       "type": "object",
-      "required": ["calibration_dir", "load", "board_cols", "board_rows", "square_mm"],
+      "required": [
+        "calibration_dir",
+        "load",
+        "board_cols",
+        "board_rows",
+        "square_mm"
+      ],
       "properties": {
-        "calibration_dir": { "type": "string", "minLength": 1 },
-        "load": { "type": "string", "enum": ["latest", "explicit"] },
-        "explicit_file": { "type": ["string", "null"] },
-        "board_cols": { "type": "integer", "minimum": 2 },
-        "board_rows": { "type": "integer", "minimum": 2 },
-        "square_mm": { "type": "number", "exclusiveMinimum": 0 }
+        "calibration_dir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "load": {
+          "type": "string",
+          "enum": [
+            "latest",
+            "explicit"
+          ]
+        },
+        "explicit_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "board_cols": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "board_rows": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "square_mm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       }
     },
     "calibration_runtime": {
       "type": "object",
       "properties": {
-        "session_dir": { "type": "string", "minLength": 1 },
-        "auto_capture": { "type": "boolean" },
-        "auto_capture_interval_s": { "type": "number", "exclusiveMinimum": 0 },
-        "min_pairs_to_solve": { "type": "integer", "minimum": 2 },
-        "target_pairs": { "type": "integer", "minimum": 1 },
-        "recommended_readiness": { "type": "number", "minimum": 0, "maximum": 100 },
-        "min_board_area_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
-        "diversity_threshold": { "type": "number", "minimum": 0 },
-        "stable_dwell_s": { "type": "number", "exclusiveMinimum": 0 },
-        "stable_min_frames": { "type": "integer", "minimum": 1 },
-        "stable_corner_motion_px": { "type": "number", "exclusiveMinimum": 0 },
-        "robust_prune": { "type": "boolean" },
-        "prune_min_epipolar_px": { "type": "number", "minimum": 0 },
-        "prune_max_epipolar_px": { "type": "number", "minimum": 0 },
-        "max_prune_fraction": { "type": "number", "minimum": 0, "maximum": 1 },
-        "keep_images_after_success": { "type": "boolean" }
+        "session_dir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "auto_capture": {
+          "type": "boolean"
+        },
+        "auto_capture_interval_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "min_pairs_to_solve": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "target_pairs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "recommended_readiness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "min_board_area_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "diversity_threshold": {
+          "type": "number",
+          "minimum": 0
+        },
+        "stable_dwell_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "stable_min_frames": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stable_corner_motion_px": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "robust_prune": {
+          "type": "boolean"
+        },
+        "prune_min_epipolar_px": {
+          "type": "number",
+          "minimum": 0
+        },
+        "prune_max_epipolar_px": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_prune_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "keep_images_after_success": {
+          "type": "boolean"
+        }
       }
     },
     "quality": {
       "type": "object",
       "properties": {
-        "max_epipolar_error_px": { "type": "number", "minimum": 0 },
-        "max_reprojection_error_px": { "type": "number", "minimum": 0 },
-        "min_depth_mm": { "type": "number", "minimum": 0 },
-        "max_depth_mm": { "type": "number", "minimum": 0 },
-        "min_quality_score": { "type": "number", "minimum": 0, "maximum": 1 },
-        "max_joint_speed_mm_s": { "type": "number", "minimum": 0 },
-        "speed_gate_reset_after_s": { "type": "number", "exclusiveMinimum": 0 }
+        "max_epipolar_error_px": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_reprojection_error_px": {
+          "type": "number",
+          "minimum": 0
+        },
+        "min_depth_mm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_depth_mm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "min_quality_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_joint_speed_mm_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "speed_gate_reset_after_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       }
     },
     "smoothing": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "type": { "type": "string", "enum": ["one_euro"] },
-        "min_cutoff": { "type": "number", "minimum": 0 },
-        "beta": { "type": "number", "minimum": 0 },
-        "d_cutoff": { "type": "number", "minimum": 0 },
-        "reset_after_s": { "type": "number", "exclusiveMinimum": 0 }
+        "enabled": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "one_euro"
+          ]
+        },
+        "min_cutoff": {
+          "type": "number",
+          "minimum": 0
+        },
+        "beta": {
+          "type": "number",
+          "minimum": 0
+        },
+        "d_cutoff": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reset_after_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
       }
     },
     "cleanup": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "keep_latest_calibrations": { "type": "integer", "minimum": 1 },
-        "delete_failed_sessions_older_days": { "type": "number", "minimum": 0 }
+        "enabled": {
+          "type": "boolean"
+        },
+        "keep_latest_calibrations": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "delete_failed_sessions_older_days": {
+          "type": "number",
+          "minimum": 0
+        }
       }
     },
     "output": {
       "type": "object",
       "properties": {
-        "joint_group": { "type": "string" },
-        "joints": { "type": "array", "items": { "type": "string" } },
-        "console": { "type": "boolean" },
-        "console_every_n_frames": { "type": "integer", "minimum": 1 },
-        "jsonl_file": { "type": ["string", "null"] },
+        "joint_group": {
+          "type": "string"
+        },
+        "joints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "console": {
+          "type": "boolean"
+        },
+        "console_every_n_frames": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "jsonl_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "udp": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "host": { "type": "string" },
-            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+            "enabled": {
+              "type": "boolean"
+            },
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
           }
         }
       }
@@ -137,16 +362,73 @@
     "runtime": {
       "type": "object",
       "properties": {
-        "root": { "type": "string", "minLength": 1 },
-        "show_preview": { "type": "boolean" },
-        "log_dir": { "type": "string", "minLength": 1 }
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "show_preview": {
+          "type": "boolean"
+        },
+        "log_dir": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "diagnostics": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" },
-        "every_n_frames": { "type": "integer", "minimum": 1 }
+        "enabled": {
+          "type": "boolean"
+        },
+        "every_n_frames": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "readout": {
+      "type": "object",
+      "properties": {
+        "joint_group": {
+          "type": "string",
+          "enum": [
+            "all",
+            "ergonomics",
+            "upper",
+            "lower",
+            "core"
+          ]
+        },
+        "joints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "world": {
+      "type": "object",
+      "properties": {
+        "dictionary": {
+          "type": "string",
+          "enum": [
+            "DICT_4X4_50",
+            "DICT_5X5_50"
+          ]
+        },
+        "reference_file": {
+          "type": "string"
+        },
+        "coordinate_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "max_residual_mm": {
+          "type": "number",
+          "minimum": 0.001
+        }
       }
     }
   }

@@ -96,6 +96,9 @@ DEFAULT_CONFIG: dict = {
         "jsonl_file": None,
         "udp": {"enabled": False, "host": "127.0.0.1", "port": 5005},
     },
+    "readout": {"joint_group": "upper", "joints": []},
+    "world": {"dictionary": "DICT_4X4_50", "reference_file": "runtime/world/reference_points.csv",
+              "coordinate_name": "WORLD", "max_residual_mm": 10.0},
     "diagnostics": {
         "enabled": False,
         "every_n_frames": 10,
@@ -309,6 +312,21 @@ def validate_config(cfg: dict) -> None:
         _bool(udp.get("enabled"), "output.udp.enabled", errors)
         _str(udp.get("host"), "output.udp.host", errors)
         _int(udp.get("port"), "output.udp.port", errors, lo=1, hi=65535)
+
+    from stereo_pose.joints import resolve_joints
+    for section in ("readout", "world"):
+        if not isinstance(cfg.get(section), dict):
+            _err(errors, section, "must be an object")
+    rd = cfg.get("readout") if isinstance(cfg.get("readout"), dict) else {}
+    try:
+        resolve_joints(rd.get("joint_group", "upper"), rd.get("joints"))
+    except (ValueError, TypeError) as e:
+        _err(errors, "readout", str(e))
+    w = cfg.get("world") if isinstance(cfg.get("world"), dict) else {}
+    if w.get("dictionary") not in ("DICT_4X4_50", "DICT_5X5_50"): _err(errors, "world.dictionary", "unsupported dictionary")
+    _str(w.get("reference_file"), "world.reference_file", errors)
+    _str(w.get("coordinate_name"), "world.coordinate_name", errors)
+    _num(w.get("max_residual_mm"), "world.max_residual_mm", errors, lo=0.001)
 
     d = cfg.get("diagnostics", {})
     _bool(d.get("enabled"), "diagnostics.enabled", errors)
