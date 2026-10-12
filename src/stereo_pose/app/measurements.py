@@ -94,9 +94,14 @@ def make_readout(names, accepted, verdicts, geometry, registration):
 
 def append_readout(canvas, rows, registration, recorder_status='REC OFF', world_warnings=()):
     import cv2
+    world_warnings = list(world_warnings)
+    metadata = {} if registration is None else registration.get('metadata', {})
+    if metadata.get('up_reference') == 'camera_mount_assumption':
+        world_warnings.insert(0, '+X forward | +Y right->left | +Z assumed up: level/upright cameras; W=align to physical world')
     h=70+23*((len(rows)+1)//2)+22*len(world_warnings)
     panel=np.zeros((h,canvas.shape[1],3),np.uint8)
     frame='CAMERA FRAME' if registration is None else registration['name']
+    if metadata.get('mode') == 'camera_midpoint': frame='DEFAULT: CAMERA MIDPOINT'
     if registration is not None and registration.get('metadata',{}).get('mode')=='zero':frame='RELATIVE: '+frame+' (axes preserved)'
     cv2.putText(panel,f'XYZ mm | {frame} | W=align / zero | T=CSV | eye_midpoint is not gaze',(14,22),cv2.FONT_HERSHEY_SIMPLEX,.46,(255,255,255),1,cv2.LINE_AA)
     for i,row in enumerate(rows):

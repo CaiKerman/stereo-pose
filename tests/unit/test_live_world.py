@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 from stereo_pose.config import load_config
 from stereo_pose.coordinates.rigid import RigidTransform
+from stereo_pose.coordinates.camera_midpoint import camera_midpoint_registration
 from stereo_pose.app.measurements import measure_frame, make_readout, append_readout
 from stereo_pose.app.world_setup import run_world_setup, world_axis_pixels
 from stereo_pose.filtering import JointSmoother
@@ -15,7 +16,7 @@ from stereo_pose.quality import TemporalSpeedGate
 from stereo_pose.models import JointRejection
 from stereo_pose.outputs.v1_message import serialize_v1_json
 from stereo_pose.geometry import StereoTriangulator
-from stereo_pose.calibration.package import load_registration, file_sha256
+from stereo_pose.calibration.package import load_registration, file_sha256, read_bundle
 from tests.unit.test_world_alignment import synthetic_calibration
 
 
@@ -77,6 +78,22 @@ class TestLiveProjection(unittest.TestCase):
         drawn=append_readout(image,rows,None,'REC OFF')
         self.assertGreater(drawn.shape[0],360);np.testing.assert_array_equal(image,copy)
 
+    def test_default_frame_transforms_candidates_and_labels_up_assumption(self):
+        r=self.r.copy();r[1,1]+=20
+        _,a,v,g=self.measure(['left_eye','right_eye'],r)
+        base=camera_midpoint_registration(read_bundle(self.cal))
+        rows=make_readout(['left_eye','right_eye','eye_midpoint'],a,v,g,base)
+        candidate=rows[0]
+        self.assertIsNone(candidate['world_filtered_mm'])
+        np.testing.assert_allclose(candidate['candidate_world_mm'],
+            base['transform'].apply(candidate['candidate_camera_mm']))
+        self.assertIsNone(rows[2]['world_filtered_mm'])
+        with patch('cv2.putText',wraps=cv2.putText) as put_text:
+            append_readout(np.zeros((360,1280,3),np.uint8),rows,base)
+        texts=[call.args[1] for call in put_text.call_args_list]
+        self.assertTrue(any('DEFAULT: CAMERA MIDPOINT' in text for text in texts))
+        self.assertTrue(any('+Z assumed up' in text for text in texts))
+
 
 class TestWInteraction(unittest.TestCase):
     def setUp(self):
@@ -132,6 +149,20 @@ class TestWInteraction(unittest.TestCase):
                 detector=Mock(side_effect=[self.left,self.right]))
         reg,_=load_registration(out);np.testing.assert_allclose(reg['transform'].R,R)
         np.testing.assert_allclose(reg['transform'].apply([0,0,1000]),np.zeros(3),atol=1e-8)
+
+    def test_zero_from_default_preserves_axes_and_unconfirmed_up_after_restart(self):
+        from unittest.mock import Mock
+        base=camera_midpoint_registration(read_bundle(self.source))
+        with patch('cv2.getWindowProperty',return_value=1),patch('cv2.imshow'),patch('cv2.waitKey',side_effect=[ord('z'),ord('r'),13]),patch('cv2.destroyWindow'):
+            out=run_world_setup(frame_left=np.zeros((720,1280,3),np.uint8),frame_right=np.zeros((720,1280,3),np.uint8),
+                triangulator=self.tri,calib_path=self.source,config_path=self.config,cfg=self.cfg,registration=base,
+                detector=Mock(side_effect=[self.left,self.right]))
+        reg,warnings=load_registration(out)
+        self.assertFalse(warnings)
+        np.testing.assert_allclose(reg['transform'].R,base['transform'].R)
+        np.testing.assert_allclose(reg['transform'].apply([0,0,1000]),[0,0,0],atol=1e-8)
+        self.assertFalse(reg['metadata']['up_confirmed'])
+        self.assertEqual(reg['metadata']['up_reference'],'camera_mount_assumption')
 
     def test_axis_projection_matches_rectified_frame(self):
         t=RigidTransform(np.eye(3),[0,0,-1000]);uv=world_axis_pixels(t,self.tri.P1)

@@ -24,7 +24,7 @@ from stereo_pose.capture.camera import open_camera, read_stereo_pair
 from stereo_pose.config import load_config
 from stereo_pose.app.measurements import measure_frame, make_readout, append_readout
 from stereo_pose.app.world_setup import run_world_setup
-from stereo_pose.calibration.package import load_registration, activate_calibration, file_sha256, read_bundle, validate_stereo_bundle
+from stereo_pose.calibration.package import load_readout_registration, activate_calibration, file_sha256, read_bundle, validate_stereo_bundle
 from stereo_pose.filtering import JointSmoother
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, resolve_joints
@@ -294,10 +294,13 @@ def run(args, cfg):
         )
 
     if calib_path is not None:
-        registration, world_warnings = load_registration(calib_path, active_size)
+        registration, world_warnings = load_readout_registration(calib_path, active_size)
         for warning in world_warnings: print("[world]", warning)
         if registration is not None:
-            print("[world] RESTORED", registration["name"], "| confirm physical cameras/mounting unchanged; file/index cannot prove this")
+            if registration['metadata'].get('mode') == 'camera_midpoint':
+                print("[coordinates] DEFAULT camera_midpoint: optical-center midpoint=0; +X forward, +Y right->left, +Z assumed up (level/upright cameras; W=physical alignment)")
+            else:
+                print("[world] RESTORED", registration["name"], "| confirm physical cameras/mounting unchanged; file/index cannot prove this")
 
     smoother = JointSmoother(
         enabled=scfg.get("enabled", True),
@@ -396,9 +399,9 @@ def run(args, cfg):
                             result = calibrator.solve()
                             triangulator = StereoTriangulator(result["path"])
                             calib_path = result["path"]
-                            registration = None
+                            registration, world_warnings = load_readout_registration(calib_path, active_size)
                             active_artifact_sha = file_sha256(calib_path)
-                            world_warnings = ["WORLD unavailable after new stereo solve; press W to re-register"]
+                            print("[coordinates] prior world cleared after stereo solve; default camera midpoint active when available; W=re-register world")
                             try:
                                 s.update(activate_calibration(args.config, calib_path))
                             except Exception as selection_error:
@@ -558,7 +561,7 @@ def run(args, cfg):
                             active_artifact_sha = file_sha256(new_path)
                             triangulator = StereoTriangulator(new_path)
                             s.update(load_config(args.config)["stereo"])
-                            registration, world_warnings = load_registration(new_path, active_size)
+                            registration, world_warnings = load_readout_registration(new_path, active_size)
                     except Exception as e:
                         print("[world] setup failed; previous active retained:", e)
             elif key in (ord("t"), ord("T")):

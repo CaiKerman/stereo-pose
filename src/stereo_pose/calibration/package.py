@@ -77,7 +77,33 @@ def load_registration(path, actual_size=None):
         if m.get('mode') != 'zero' and m.get('up_confirmed') is not True: raise ValueError('world-up not confirmed')
         return {'transform':t,'name':name,'metadata':m}, []
     except (ValueError, KeyError, TypeError) as e:
-        return None, [f'WORLD INVALID: {e}; CAMERA FRAME only; re-register W']
+        return None, [f'WORLD INVALID: {e}; re-register W']
+
+
+def load_readout_registration(path, actual_size=None):
+    """Prefer a valid owner W/zero; otherwise derive the default camera midpoint.
+
+    Default geometry is never saved as a physically confirmed world fit. It is
+    recomputed from the selected stereo artifact on restart and on stereo solve.
+    Invalid saved W remains visibly invalid even when the default is available.
+    """
+    registration, warnings = load_registration(path, actual_size)
+    if registration is not None:
+        return registration, warnings
+    try:
+        from stereo_pose.coordinates.camera_midpoint import camera_midpoint_registration
+        b = read_bundle(path)
+        validate_stereo_bundle(b)
+        if actual_size is not None and 'image_size' in b:
+            if tuple(np.asarray(b['image_size']).reshape(-1)) != tuple(actual_size):
+                raise ValueError('capture resolution differs from stereo calibration; recalibrate C -> R')
+        registration = camera_midpoint_registration(b)
+        registration['metadata']['stereo_fingerprint'] = stereo_fingerprint(b)
+        if actual_size is not None and 'image_size' not in b:
+            warnings.append('DEFAULT FRAME: legacy calibration resolution unverified; confirm capture size unchanged')
+        return registration, warnings
+    except (ValueError, KeyError, TypeError, OSError) as e:
+        return None, warnings + [f'DEFAULT FRAME UNAVAILABLE: {e}; CAMERA FRAME only']
 
 
 def atomic_json(path, data):

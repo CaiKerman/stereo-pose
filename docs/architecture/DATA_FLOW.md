@@ -1,3 +1,14 @@
+## Task003B default frame
+
+`load_readout_registration` first validates saved W/relative registration;
+otherwise it derives `camera_midpoint` from the selected P1/P2 optical centers
+and R1/R2 camera-up orientations. The same proper mm transform feeds live
+accepted/candidate readout and CSV W fields, while the legacy C message remains
+untouched. Default mode writes no NPZ and does not change config selection.
+Session JSON freezes its origin/axes/baseline/R/t/installation assumption and
+stereo fingerprint. UI marks DEFAULT and unconfirmed gravity. New stereo solve
+recomputes the default; W supersedes it; zero retains axis provenance.
+
 ## Task003A additions
 
 The tracking loop processes the union of legacy-selected and live-readout joints once, with the same C geometry/quality/speed/One Euro gates. A projected PoseFrame preserves legacy selected joints and statistics for v1.2. A separate fresh readout contains eyes/midpoint, accepted raw/filtered C/W and distinctly rejected candidate/missing values. It feeds the display and manual recorder without further camera acquisition/YOLO.

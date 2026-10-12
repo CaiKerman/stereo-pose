@@ -1,8 +1,7 @@
-"""Coordinate transforms: a minimal rigid-transform scaffold.
+"""Generic proper rigid transforms and user-control registration.
 
-This is a math scaffold only. It does NOT define a final world X/Y convention;
-that remains a future project decision (ground ``Z=0``, ``+Z`` upward). Points
-are ``(N, 3)`` with units carried by the caller.
+Axis conventions belong to the owner-defined W or the separate camera_midpoint
+default, not this generic math. Points are ``(N, 3)``; callers carry units.
 """
 
 from __future__ import annotations
