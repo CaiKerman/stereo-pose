@@ -36,6 +36,11 @@ runtime/captures/*
 !runtime/logs/.gitkeep
 !runtime/captures/.gitkeep
 
+# Diagnostic snapshots contain human imagery — never commit them
+runtime/diagnostics/
+runtime/world/
+runtime/recordings/
+
 # Legacy/generated measurement artifacts
 calibrations/
 calib_sessions/

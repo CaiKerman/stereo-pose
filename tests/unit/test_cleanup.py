@@ -128,9 +128,18 @@ class TestCleanupRootGuard(unittest.TestCase):
                 link.symlink_to(outside)
             except OSError:
                 self.skipTest("symlinks not supported on this platform")
+            # A second, newer regular file so the symlink actually enters the
+            # deletion-candidate scan under keep_latest=1. The sort key is
+            # stat().st_mtime, which FOLLOWS the link, so age the *target* —
+            # relying on creation order alone can tie timestamps and make the
+            # directory-scan order decide which file is "newest".
+            _utime_days_ago(outside, 1)
+            kept = auto / "stereo_kept_000000.npz"
+            kept.write_bytes(b"keep")
             with self.assertRaises(CleanupSafetyError):
                 cleanup_project(cal, trusted / "sessions", keep_latest=1, failed_days=7, verbose=False, runtime_root=trusted)
             self.assertTrue(outside.exists())
+            self.assertTrue(kept.exists())
 
     def test_omitting_runtime_root_refuses_cleanup(self):
         with tempfile.TemporaryDirectory() as d:

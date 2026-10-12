@@ -1,4 +1,28 @@
+# Review for owners — Task003A P0 delivery
+
+- Latest owner instruction at 2026-10-12 19:30 Asia/Shanghai authorized GPT to finish if the other coding agent had not delivered. GitHub still had only handoff commit `389042e` at takeover; no remote implementation/new branch/PR was found. Unpublished work in another agent's environment is not observable.
+- **Implementation completed and deterministic verification passed.** Implementation head: `08da0e6ef0e10711bc1c341302bdec3b5daac312`.
+- Existing PR: https://github.com/CaiKerman/stereo-pose/pull/3 ; branch `trae/agent-c3dfMx`, unchanged base `feat/002-metric-validation-diagnostics`. Parent PR #2/main are unchanged/unmerged.
+- No routine implementation decision awaits permission. Required next decision is owner acceptance on the physical Windows installation before merge. No merge authorization is requested/assumed by this delivery.
+- Material limits: physical rig movement cannot be established from numeric camera indexes/file hashes; verify unchanged mounts/order or recalibrate/re-register. Registration residual and repeated eye points do not prove eye absolute accuracy. Three controls have no independent redundancy.
+- Owner should test W -> entered real XYZ -> R/U/Enter, restart same W, optional Z/one-point zero, fresh accepted vs candidate eye/joint values, T start/stop CSV and old hotkeys/picker cancel-rescan. Use the existing valid stereo calibration when the physical rig is unchanged.
+- See TEST_REPORT.md for exact results/platform and docs/protocols/WORLD_NPZ_CSV_V1.md for actual behavior. The implementing GPT performed self-review and reproduced tests; this is not a second independent human/code-owner review.
+
+## Historical owner records
+
 # Review for owners
+
+## Task003A P0 — owner decision and review handoff (2026-10-12)
+
+- Owner approved continuation on existing `trae/agent-c3dfMx` / PR #3 at 17:16 Asia/Shanghai; base remains `feat/002-metric-validation-diagnostics`. Earlier separate-branch proposals are superseded. No merge/topology authorization.
+- Reviewer prepared instructions only; owner will notify another coding agent. No Task003A feature or test run is claimed by this preparation.
+- Binding scope: world + translation-only zero, unified NPZ/restart, live eye/joint XYZ, manual T 5Hz CSV; Task002C deferred and P1/P2 excluded.
+- No unresolved routine owner decision blocks the specified implementation. GPT reviews implementation/reproduction first; owner verifies physical axes, camera arrangement, W restart and recording afterward.
+- Risk requiring explicit review: physical camera movement cannot be established from index/file equality; present clear operator guidance and refuse known geometry mismatches. Registration residual does not prove eye absolute accuracy.
+- Implementation agent must replace this section's readiness with actual implementation head SHA, PR #3 URL, remaining material risks and any untested hardware paths when requesting review.
+- Canonical coding/reviewer handoff: `docs/handoffs/20261012_TASK003A_HANDOFF.md`.
+
+## Historical owner-review records
 
 Only decisions/risks requiring owner or architecture review. Ordinary
 implementation detail is omitted.
@@ -35,6 +59,77 @@ implementation detail is omitted.
 - Task branch: `feat/002-metric-validation-diagnostics`
 - Pull request: https://github.com/CaiKerman/stereo-pose/pull/2
 - Head commit SHA (round 1): `9a68f428956a28a2a0d36629bac9810a91a15c31`
+
+## Task 002A — camera discovery & LEFT/RIGHT selection (owner pre-test request)
+
+Implemented per `docs/instructions/002A_CAMERA_SELECTION_PRETEST.md` on the
+same Task 002 branch / PR #2.
+
+### Decisions taken (no new owner input required)
+
+1. **Picker is on by default for the RUN_ME launcher** (`camera.selection.startup_pick: true`) — this is what the owner asked for (double-click, pick, go). It can be disabled via config or `STEREO_POSE_NO_CAMERA_PICK=1`. The project CLI stays opt-in (`--camera-pick`), so automated/noninteractive workflows never see a GUI.
+2. **Index identity ≠ physical identity.** When the active calibration's recorded left/right indexes differ from the selected pair (or are missing), a prominent warning banner is printed at startup. The warning is advisory only: no NPZ is deleted, rewritten, or auto-invalidated. The operator decides whether the physical pairing is unchanged (keep calibration) or to recalibrate.
+3. **No new dependencies / no pip at runtime.** The picker is plain OpenCV (`imshow` + `waitKey`) on the existing capture backend settings.
+
+### Notes / risks
+
+- Numeric camera indexes can change between boots (Windows enumeration). The
+  persisted choice is the current best knowledge; the picker + identity banner
+  is the mitigation. Physical identity cannot be proven programmatically with
+  plain OpenCV on Windows — device names are not reliably exposed.
+- The deterministic suite covers all selection logic with injected fakes; the
+  real 3-camera acceptance (visual tiles, hotplug rescan, actual window) is
+  left to the owner via the checklist in `README_先看我.txt`.
+- One pre-existing test (`test_rejects_symlink_escape`) was made deterministic
+  (aged symlink-target mtime); no product code changed for it.
+
+### Handoff (Task 002A)
+
+- Task branch: `feat/002-metric-validation-diagnostics`
+- Pull request: https://github.com/CaiKerman/stereo-pose/pull/2
+- Head commits (002A): implementation `1c73556` + docs commit on top (see `git log` / PR #2)
+- Not merged; awaiting reviewer re-review.
+
+## Task 002B — on-demand diagnostic snapshot (`S`) + compact developer menu (`M`)
+
+Implemented per `docs/instructions/002B_STEREO_SNAPSHOT_AND_DEBUG_MENU.md` on
+the existing working branch `trae/agent-c3dfMx` / PR #3.
+
+### Decisions taken (no new owner input required)
+
+1. **`S` saves only what the loop already holds.** The snapshot module receives
+   the exact left/right frames and pose results from the current tracking
+   iteration; it never opens another camera pair and never reruns YOLO. A
+   self-contained `calibration_snapshot.npz` (intrinsics/distortion/
+   rectification/projection) is copied out so rectified `uv` and signed
+   epipolar deltas can be reproduced offline without the active NPZ or any
+   model/hardware dependency.
+2. **Privacy: snapshots are runtime-only and never committed.** Outputs live
+   under `runtime/diagnostics/snapshots/`, are written atomically and never
+   overwrite history; `G` cleanup does not touch them. Human imagery is
+   sensitive — the code and README both instruct the operator never to upload a
+   snapshot to GitHub or any external service.
+3. **`M` is a pure overlay toggle.** Default collapsed shows camera indexes,
+   calibration state, accepted-joint count, FPS and live alarms; expanded adds
+   the full hotkey row and One Euro internals. No hotkey is remapped or
+   disabled, and no numerical/measurement behavior changes.
+
+### Notes / risks
+
+- The 3 px epipolar acceptance gate is **untouched**, and no speculative
+  left/right joint-order swap was made. That evidence-gathering is exactly what
+  `S` is for: the owner should press `S` on 1–3 static upper-body frames with
+  known large epipolar failures, then inspect them offline before Task 002C
+  proposes a fix.
+- The snapshot/replay path is verified with synthetic frames + exact synthetic
+  calibration only; real hardware `S` capture is left to the owner (no claim of
+  hardware acceptance from fake inputs).
+
+### Handoff (Task 002B)
+
+- Working branch: `trae/agent-c3dfMx` (existing)
+- Pull request: https://github.com/CaiKerman/stereo-pose/pull/3
+- Not merged; awaiting GPT review, then owner `S`-capture acceptance.
 
 ## Task 001 — Need decision
 

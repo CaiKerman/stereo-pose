@@ -121,3 +121,31 @@ def validate_calibration_compatibility(
         expected_fps=None if fps is None else float(fps),
     )
     return meta.warnings
+
+
+def camera_identity_warnings(path, left_index, right_index) -> list:
+    """Warn (never decide) when a calibration's camera indexes differ from the
+    current selection, or when the pairing cannot be verified at all.
+
+    A saved stereo NPZ is valid for a particular *physical* camera pairing and
+    rig geometry, not for two numeric indexes. Re-enumeration after changing
+    computers (e.g. USB 0/1 becoming 1/2 when a built-in cam takes 0) does not
+    by itself invalidate the calibration, and matching indexes do not by
+    themselves prove physical identity either. The caller must surface these
+    warnings prominently and let the operator decide (and recalibrate if
+    devices or geometry changed); the NPZ is never modified or deleted here.
+    """
+    meta = load_calibration_metadata(path)
+    if meta.camera_left is None or meta.camera_right is None:
+        return [
+            "this calibration does not record which camera indexes produced it; "
+            "the physical LEFT/RIGHT pairing cannot be verified from the file — "
+            "confirm the rig manually and recalibrate if unsure"
+        ]
+    if (int(meta.camera_left), int(meta.camera_right)) == (int(left_index), int(right_index)):
+        return []
+    return [
+        f"calibration was created with LEFT=camera {meta.camera_left}, "
+        f"RIGHT=camera {meta.camera_right}, but the current selection is "
+        f"LEFT=camera {left_index}, RIGHT=camera {right_index}"
+    ]

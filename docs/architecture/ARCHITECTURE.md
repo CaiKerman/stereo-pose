@@ -16,7 +16,8 @@ Each subsystem is a Python subpackage under `src/stereo_pose/`:
 | Subpackage | Responsibility | Key types / entry points |
 |---|---|---|
 | `capture/` | Open webcams and read matched stereo pairs | `open_camera`, `read_stereo_pair` |
-| `calibration/` | Collect stable checkerboard pairs and solve stereo calibration | `RuntimeCalibration`, `newest_calibration`, `load_calibration_metadata`, `validate_calibration_compatibility` |
+| `capture/` (selection) | Discover cameras, preview, interactive LEFT/RIGHT selection (Task 002A) | `run_camera_selection`, `discover_cameras`, `CameraSelectionSession`, `save_camera_choice` |
+| `calibration/` | Collect stable checkerboard pairs and solve stereo calibration | `RuntimeCalibration`, `newest_calibration`, `load_calibration_metadata`, `validate_calibration_compatibility`, `camera_identity_warnings` |
 | `pose/` | YOLO Pose inference and device resolution | `PoseEstimator`, `resolve_device` |
 | `geometry/` | Rectified triangulation + error metrics | `StereoTriangulator` |
 | `quality/` | Measurement quality score, accept/reject gates, and per-joint rejection classification | `evaluate_measurement`, `heuristic_quality_score`, `TemporalSpeedGate`, `classify_joint`, `aggregate_bucket` |

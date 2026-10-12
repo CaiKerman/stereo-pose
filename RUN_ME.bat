@@ -4,8 +4,12 @@ cd /d "%~dp0"
 title Stereo Pose - RUN ME
 
 echo ================================================================
-echo Stereo Pose Task002 - metric validation + joint diagnostics
+echo Stereo Pose Task003A - world XYZ and manual 5 Hz CSV
 echo This test does NOT pip-install the project.
+echo.
+echo A camera selection window opens FIRST: pick your two USB
+echo webcams as LEFT / RIGHT by pressing their CAM numbers,
+echo then press ENTER to confirm.
 echo ================================================================
 echo.
 

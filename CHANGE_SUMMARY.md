@@ -1,3 +1,46 @@
+# Task003A P0 — implementation complete (2026-10-12)
+
+## Added
+- Pure no-scale proper rigid fit/degeneracy/residual reporting and translation-only origin.
+- ArUco ID/feature CSV adapter with triangulated physical centers; W frozen-pair preview/axes/up/name/confirm/cancel.
+- Immutable stereo+world NPZ and explicit file/hash activation/restart.
+- Shared measurement pass with legacy projection and fresh eye/joint/candidate readout.
+- Manual T CSV recorder, true monotonic cadence, frozen metadata, streaming/error/exit handling.
+- 47 new deterministic methods; operator/protocol documentation and synthetic examples.
+
+## Modified
+- runner/config/schema/defaults, doctor ArUco diagnostics, launcher labels, review/status documents.
+- Cleanup excludes recording subtrees and protects active auto NPZ; G errors stay local to cleanup.
+- Stereo solver archive publication now unique/atomic/no-overwrite; its solve algorithm and numerical arrays remain unchanged.
+- Runtime private world/recording paths excluded from tracking.
+
+## Deleted
+No files. The inline joint loop was replaced by a shared function preserving the legacy selected-joint projection.
+
+## Behavior/numerical/protocol/config changes
+- New W view is an additional no-scale C->W coordinate transform after original quality/filtering; no gate changes or numerical reinterpretation of old v1.2.
+- Eyes processed without extra YOLO; legacy selected joints, coordinates, fields and aggregate means/counts preserved.
+- Defaults: readout upper + eyes/midpoint; world DICT_4X4_50 with editable runtime CSV; recording enabled feature but auto_start=false, nominal 5Hz.
+- W confirmation saves/activates a new saved NPZ; C/R clears W and persists new stereo selection. P remains preserve-copy only.
+- T/C/W/F/exit session behavior and NPZ/CSV contracts in docs/protocols/WORLD_NPZ_CSV_V1.md.
+
+## Verification / remaining limits
+261 methods + 26 pytest subtest cases passed; unittest 261 OK. Real geometry/ArUco/files, fake hardware/model/windows. Windows/live rig and absolute accuracy not certified. P1/P2 excluded.
+Implementation head: `08da0e6ef0e10711bc1c341302bdec3b5daac312`; same PR #3/base, PR #2 unmerged, no topology changes.
+
+## Previous summaries
+
+# Task003A handoff update — 2026-10-12
+
+- **Added:** owner-authorized current-branch startup, architecture pre-review, phased development and acceptance matrix in the handoff.
+- **Modified:** AGENTS.md, CURRENT_TASK.md, Task003A instruction/handoff, REVIEW_INBOX.md, REVIEW_FOR_OWNERS.md and this/test report's preparation notices.
+- **Deleted:** no files; obsolete active new-branch approval wording replaced. Historical reviewer records preserved and labeled as history.
+- **Behavior/numerical/protocol/config changes:** none; documentation only. Task003A is not implemented by this commit.
+- **Git:** owner authorized implementation on existing `trae/agent-c3dfMx` / PR #3; base unchanged. PR #2 remains open/unmerged; no new branch/PR, merge, rebase, force-push or deletion.
+- **Known issues:** absolute accuracy not established; previous hardware checks remain unclaimed. Baseline 214 passes are the prior developer report, not a new run.
+
+## Previous change summaries
+
 # Change summary — Task 002 (metric validation + joint rejection diagnostics)
 
 ## Added
@@ -109,6 +152,196 @@
   normalization is evidence-based (epipolar geometry) and records `corner_order_mode`;
   it never changes the spacing/plane/scale math. No v1.2 output or measurement
   threshold is affected.
+
+## Task 002A — pre-test camera discovery & LEFT/RIGHT selection (owner request)
+
+### Added
+
+- `src/stereo_pose/capture/selection.py` — camera discovery, preview, and
+  interactive LEFT/RIGHT selection: `discover_cameras` (bounded index probing,
+  frame-delivering-only usability, sparse-index support), pure
+  `CameraSelectionSession` state machine (number keys assign LEFT then RIGHT,
+  distinct cameras only; `U` undo, `R` rescan, `ENTER` confirm, `Q`/`ESC`
+  cancel), `render_canvas` (labeled live tiles: `CAM n` + LEFT green / RIGHT
+  blue role tags + status/instruction bar), `save_camera_choice` (atomic
+  temp-file + `os.replace` persistence preserving unrelated fields),
+  `run_camera_selection` (full picker; releases every probe handle on every
+  path), and `selection_requested` (launcher gating). All device/GUI access is
+  injectable for hardware-free deterministic tests.
+- `calibration/metadata.py` — `camera_identity_warnings`: compares the active
+  calibration NPZ's recorded left/right indexes with the currently selected
+  pair; warn-only, never deletes/rewrites the NPZ.
+- Config `camera.selection` section (`startup_pick` default true,
+  `probe_max_index` default 7, `first_frame_attempts` default 5) in
+  `config.py` defaults + validation, `configs/default.json`, and
+  `configs/schemas/default.schema.json`.
+- CLI `--camera-pick` flag on `stereo_pose run` (opt-in; suppressed by explicit
+  `--left-cam`/`--right-cam`).
+- Tests: `tests/unit/test_camera_selection.py` (48 tests: discovery/assignment/
+  rescan/error paths, handle release on every path, atomic + field-preserving
+  config write, cancel-never-writes, malformed-config safety, CLI precedence,
+  noninteractive gating, calibration identity warnings, fail-closed B1 +
+  range B3).
+
+### Modified
+
+- `RUN_ME.py` — offers the picker before doctor/tracking when
+  `selection_requested` (default on); this gate fails closed (cancel / failure
+  aborts startup, no cameras opened); config reloaded after confirmation.
+  `RUN_ME.bat` banner explains the selection step.
+- `app/runner.py` — `--camera-pick` flag; `should_pick_cameras` precedence
+  (explicit CLI indexes > `--camera-pick` > nothing); `--camera-pick` also
+  fails closed on cancel/failure; startup and post-solve
+  calibration compatibility reports now also surface camera-index identity
+  warnings as a prominent banner.
+- `tests/unit/test_cleanup.py::test_rejects_symlink_escape` — made
+  deterministic: the symlink target's mtime is aged explicitly, because
+  the candidate sort key `stat().st_mtime` follows the link and tied
+  timestamps let directory order decide which file was "newest".
+- `README_先看我.txt` (visual LEFT/RIGHT picking instructions + 3-camera
+  manual acceptance checklist + calibration-identity reminder),
+  `README.md`, `docs/architecture/DATA_FLOW.md` (camera-selection path,
+  identity-warning behavior).
+
+### Behavior changes
+
+- `RUN_ME.bat` now opens the visual camera picker by default before tracking
+  (`camera.selection.startup_pick: true`; disable via config or the
+  `STEREO_POSE_NO_CAMERA_PICK` environment variable). Confirmed choices are
+  persisted to the local config.json; cancellation leaves it unchanged.
+  Cancelling or failing the picker fails closed: startup aborts instead of
+  reusing possibly-stale indexes.
+- Startup prints a prominent warning banner when the active calibration's
+  recorded camera indexes differ from the selected pair (or cannot be
+  verified). The warning is advisory: no calibration file is deleted,
+  overwritten, or auto-invalidated.
+
+### Numerical behavior changes
+
+- None. No measurement thresholds, quality gates, filters, or v1.2 outputs
+  changed.
+
+## Review round 2 (PR #3 feedback)
+
+### Behavior changes (B1 — fail closed)
+
+- `RUN_ME.py` and `app/runner.py --camera-pick` no longer catch-and-continue
+  on picker exception, and now treat a `None` (cancel / failed save) result as
+  an abort: they exit `SystemExit(1)` without opening cameras or starting
+  stereo tracking. Only a confirmed, persisted choice proceeds.
+
+### Config changes (B3 — probe range)
+
+- `camera.selection.probe_max_index` validation upper bound lowered from 63 to
+  9 (matching the picker's single-digit number keys), in `config.py` and
+  `configs/schemas/default.schema.json`. `configs/default.json` (7) unchanged.
+
+### Artifacts (B2)
+
+- Verified all round-1 claimed artifacts are committed; `TEST_REPORT.md`,
+  `CHANGE_SUMMARY.md`, and `REVIEW_INBOX.md` updated to match the code and the
+  181-test count.
+
+### Tests
+
+- `tests/unit/test_camera_selection.py`: `test_probe_max_index_boundary_accepted`
+  (0 and 9 valid; B3) and `TestFailClosed` (4 tests asserting tracking never
+  starts on CLI/RUN_ME cancel or failure; B1). Full suite: 181 passed.
+
+## Task 002B — on-demand stereo snapshot + collapsible developer overlay (owner request)
+
+### Added
+
+- `src/stereo_pose/diagnostics/snapshot.py` — on-demand single paired-frame
+  diagnostic snapshot (`S` hotkey): writes left/right raw PNGs, annotated
+  PNGs (name + confidence labels), a `stereo_pose_3d/snapshot/v2`
+  `manifest.json` (capture metadata, host timing with an explicit
+  capture-only note for `pair_cycle_ms`, calibration provenance incl.
+  SHA-256, per-keypoint pose observations, per-joint rectified geometry and
+  rejection states), a self-contained `calibration_snapshot.npz`
+  (K/D/R/P matrices, only when a calibration is active), and a `README.txt`.
+  Schema v2 semantics: the RAW finite `uv`/`confidence` are always
+  preserved — including Ultralytics zero placeholders — while usability is
+  expressed by independent `missing`/`missing_reason`/`low_confidence`
+  fields (round-1 B1). All writes are staged in a fresh `<name>.partial`
+  directory and atomically renamed on completion; any failure deletes only
+  that staging directory, so a failed save can never leave a half-written
+  folder that looks like valid evidence (round-1 follow-up).
+- `tools/inspect_snapshot.py` — offline epipolar replay from the saved raw
+  keypoints + `calibration_snapshot.npz`: recomputes rectified uv / signed
+  delta / epipolar error, cross-checks the stored signed deltas AND the
+  stored rectified uv coordinates (`uv_ok` column), and reports structured
+  exit codes: 0 = replayed and matched, 1 = replay impossible
+  (missing/corrupt manifest, unsupported schema, missing/corrupt geometry,
+  bad arguments), 2 = replayed but mismatches. Null/non-numeric stored
+  values render as `n/a` mismatches instead of raising `TypeError`
+  (round-1 B2). Requires only NumPy + OpenCV.
+- Tests: `tests/unit/test_snapshot.py` — 29 deterministic tests (synthetic
+  exact rectified geometry; no camera/torch/CUDA/weights).
+
+### Modified
+
+- `src/stereo_pose/app/runner.py` —
+  - `S` hotkey saves a snapshot from the **already captured** `fl`/`fr`
+    frames and the **already chosen** `pts_l`/`pts_r` keypoints — no second
+    camera read, no second YOLO inference — and passes the runner's
+    `keypoint_confidence` as the manifest's `confidence_threshold`.
+  - `M` hotkey toggles the developer overlay (`build_menu_lines`):
+    collapsed default shows cameras, calibration state, accepted joints,
+    full-loop FPS, live alarms, and the `M: Developer tools` hint; expanded
+    adds device, rejection counts, stereo RMS/epipolar/reprojection, host
+    grab skew, One Euro internals, and the full hotkey row. Alarms are
+    prepended in BOTH views (round-1 B4).
+  - Overlay FPS now reports the measured **full-loop** rate (capture +
+    inference + triangulation + publish + render + waitKey, EMA-smoothed);
+    the capture-only `pair_cycle_ms` is displayed separately as
+    `grab=NNms` in the expanded menu and documented as capture-only in the
+    manifest (round-1 B4: 1000/pair_cycle_ms previously overstated the
+    real frame rate).
+- `README.md`, `README_先看我.txt` — S/M hotkey documentation, snapshot
+  folder layout, offline replay usage (Chinese + English).
+- `REVIEW_INBOX.md`, `TEST_REPORT.md`, PR #3 body — review-handoff
+  artifacts updated for round 1 (round-1 B3).
+
+### Behavior changes
+
+- New hotkeys `S` (snapshot) and `M` (developer overlay toggle) in tracking
+  mode; all existing hotkeys unchanged. Snapshot folders are written under
+  `runtime/diagnostics/snapshots/` only, never overwrite prior snapshots
+  or calibrations, and are never removed by calibration-history cleanup.
+- The tracking overlay FPS is now a measured end-to-end value instead of
+  the capture-only pair cycle; live alarms remain visible with the
+  developer overlay expanded.
+
+### Numerical behavior changes
+
+- None. No camera geometry, pose association, quality threshold, 3 px
+  epipolar gate, v1.2 protocol field, or Task 003 world-coordinate work was
+  touched. The snapshot only records what the live loop already computed.
+
+### Known issues
+
+- The live `S`/`M` paths were NOT exercised on real hardware in this
+  environment (no cameras/model weights); they are covered by the 33
+  deterministic tests (injected synthetic frames/poses/geometry). Real-rig
+  owner acceptance is still pending — see TEST_REPORT.md and
+  REVIEW_INBOX.md.
+
+### Review round 2 (B5 — real distortion arrays)
+
+- `tools/inspect_snapshot.py::_load_calibration` no longer requires a 1-D
+  distribution vector: it now accepts the `(1, N)` row vector (and `(N, 1)`
+  column vector) that real `cv2.calibrateCamera` / `cv2.stereoCalibrate`
+  produce in `calibration/collection.py`, normalizing accepted row/column
+  vectors to a flat 1-D vector before `cv2.undistortPoints`. A genuine 2-D
+  matrix (`(2, 5)`) is still rejected with exit 1. No calibration file,
+  geometry, or quality threshold was changed — the fix is confined to the
+  offline replay tool.
+- Tests: `TestRealOpenCVDistortionShape` in `tests/unit/test_snapshot.py`
+  (`(1,5)` and `(5,1)` each round-trip the full snapshot-write → offline-replay
+  path with exit 0, asserting the saved NPZ preserved the real distortion
+  shape; flat `(5,)` still replays; `(2,5)` still rejected). Full suite
+  grew from 210 to 214 tests.
 
 ---
 

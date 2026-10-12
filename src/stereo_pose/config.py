@@ -8,6 +8,7 @@ under ``configs/schemas/default.schema.json`` for documentation/tooling.
 from __future__ import annotations
 
 import json
+import math
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, List, Optional
@@ -23,6 +24,16 @@ DEFAULT_CONFIG: dict = {
         "fourcc": "MJPG",
         "buffer_size": 1,
         "alternate_grab_order": True,
+        "selection": {
+            # Task 002A: interactive LEFT/RIGHT camera picker offered by RUN_ME.
+            "startup_pick": True,
+            # Probe OpenCV indexes 0..probe_max_index when discovering cameras.
+            # The picker assigns cameras with single-digit number keys, so this
+            # is bounded to 0..9 (an index >= 10 could never be selected).
+            "probe_max_index": 7,
+            # Reads attempted before declaring an opened camera "no frames".
+            "first_frame_attempts": 5,
+        },
     },
     "pose": {
         "model": "yolo11n-pose.pt",
@@ -86,6 +97,11 @@ DEFAULT_CONFIG: dict = {
         "jsonl_file": None,
         "udp": {"enabled": False, "host": "127.0.0.1", "port": 5005},
     },
+    "recording": {"enabled": True, "auto_start": False, "sample_rate_hz": 5,
+                  "save_csv": True, "output_dir": "runtime/recordings", "include_rejected_candidates": True},
+    "readout": {"joint_group": "upper", "joints": []},
+    "world": {"dictionary": "DICT_4X4_50", "reference_file": "runtime/world/reference_points.csv",
+              "coordinate_name": "WORLD", "max_residual_mm": 10.0},
     "diagnostics": {
         "enabled": False,
         "every_n_frames": 10,
@@ -157,6 +173,9 @@ def _num(cfg_val: Any, path: str, errors: List[str], lo=None, hi=None) -> None:
     if isinstance(cfg_val, bool) or not isinstance(cfg_val, (int, float)):
         _err(errors, path, f"expected a number, got {type(cfg_val).__name__}")
         return
+    if not math.isfinite(cfg_val):
+        _err(errors, path, "must be finite")
+        return
     if lo is not None and cfg_val < lo:
         _err(errors, path, f"must be >= {lo}")
     if hi is not None and cfg_val > hi:
@@ -214,6 +233,13 @@ def validate_config(cfg: dict) -> None:
         _err(errors, "camera.fourcc", "must be a 4-character ASCII code (e.g. 'MJPG')")
     _int(c.get("buffer_size"), "camera.buffer_size", errors, lo=1)
     _bool(c.get("alternate_grab_order"), "camera.alternate_grab_order", errors)
+    sel = c.get("selection", {})
+    if not isinstance(sel, dict):
+        _err(errors, "camera.selection", "must be an object")
+    else:
+        _bool(sel.get("startup_pick"), "camera.selection.startup_pick", errors)
+        _int(sel.get("probe_max_index"), "camera.selection.probe_max_index", errors, lo=0, hi=9)
+        _int(sel.get("first_frame_attempts"), "camera.selection.first_frame_attempts", errors, lo=1, hi=60)
 
     p = cfg.get("pose", {})
     _str(p.get("model"), "pose.model", errors)
@@ -292,6 +318,31 @@ def validate_config(cfg: dict) -> None:
         _bool(udp.get("enabled"), "output.udp.enabled", errors)
         _str(udp.get("host"), "output.udp.host", errors)
         _int(udp.get("port"), "output.udp.port", errors, lo=1, hi=65535)
+
+    from stereo_pose.joints import resolve_joints
+    for section in ("readout", "world"):
+        if not isinstance(cfg.get(section), dict):
+            _err(errors, section, "must be an object")
+    rd = cfg.get("readout") if isinstance(cfg.get("readout"), dict) else {}
+    try:
+        resolve_joints(rd.get("joint_group", "upper"), rd.get("joints"))
+    except (ValueError, TypeError) as e:
+        _err(errors, "readout", str(e))
+    w = cfg.get("world") if isinstance(cfg.get("world"), dict) else {}
+    if w.get("dictionary") not in ("DICT_4X4_50", "DICT_5X5_50"): _err(errors, "world.dictionary", "unsupported dictionary")
+    _str(w.get("reference_file"), "world.reference_file", errors)
+    _str(w.get("coordinate_name"), "world.coordinate_name", errors)
+    _num(w.get("max_residual_mm"), "world.max_residual_mm", errors, lo=0.001)
+
+    rec = cfg.get("recording")
+    if not isinstance(rec, dict):
+        _err(errors, "recording", "must be an object")
+    else:
+        for key in ("enabled", "auto_start", "save_csv", "include_rejected_candidates"):
+            _bool(rec.get(key), "recording." + key, errors)
+        if rec.get("auto_start") is not False: _err(errors, "recording.auto_start", "must be false; T starts recording")
+        _num(rec.get("sample_rate_hz"), "recording.sample_rate_hz", errors, lo=0.001, hi=1000)
+        _str(rec.get("output_dir"), "recording.output_dir", errors)
 
     d = cfg.get("diagnostics", {})
     _bool(d.get("enabled"), "diagnostics.enabled", errors)

@@ -80,13 +80,45 @@ def main() -> None:
         from stereo_pose.diagnostics.doctor import render_doctor, run_doctor
 
         cfg = load_config(cfg_path)
+
+        # Task 002A: visually identify all camera feeds and pick LEFT/RIGHT
+        # before the stereo tracking loop opens its two cameras. The choice is
+        # saved to config.json. This gate fails closed: if the operator cancels,
+        # or the picker cannot run / persist the choice, startup aborts instead
+        # of silently reusing possibly-stale config.json indexes (which could,
+        # e.g., open the built-in laptop camera as one stereo input).
+        from stereo_pose.capture.selection import run_camera_selection, selection_requested
+
+        if selection_requested(cfg):
+            print("=" * 72)
+            print("Camera selection - identify your cameras by their live preview.")
+            print("A window will show every usable camera as 'CAM <number>'.")
+            print("Press the number keys to assign LEFT first, then RIGHT;")
+            print("U=undo  R=rescan (after plug/unplug)  ENTER=confirm  Q/ESC=cancel.")
+            print("=" * 72 + "\n")
+            try:
+                choice = run_camera_selection(cfg_path)
+            except Exception as e:  # noqa: BLE001 — surface, but never continue with stale indexes
+                print(f"[setup] camera selection failed ({e});")
+                print("[setup] no cameras were opened and no stereo tracking was started.")
+                raise SystemExit(1)
+            if choice is None:
+                print("[setup] camera selection was cancelled or could not be saved.")
+                print("[setup] no cameras were opened and no stereo tracking was started.")
+                print("[setup] run RUN_ME again to pick your LEFT/RIGHT cameras.")
+                raise SystemExit(1)
+            cfg = load_config(cfg_path)  # reload: the confirmed choice was persisted
+            print(f"[setup] cameras confirmed: LEFT=CAM {choice.left}  RIGHT=CAM {choice.right}")
+
         print(render_doctor(run_doctor(cfg)))
 
         print("\n" + "=" * 72)
         print("Stereo Pose live test")
+        print(f"Cameras: LEFT={cfg['camera']['left']}  RIGHT={cfg['camera']['right']}")
         print("C=calibration  AUTO waits for STABLE  SPACE=manual capture")
         print("R=solve  X=discard  P=pin/save  F=filter on/off")
         print("D=per-joint diagnostics  V=validate board  G=cleanup  Q/ESC=quit")
+        print("W=world/zero setup  T=manual CSV start/stop (default OFF, 5 Hz export)")
         print("=" * 72 + "\n")
 
         from stereo_pose.app.runner import main as run_main

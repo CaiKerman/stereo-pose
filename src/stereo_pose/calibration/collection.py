@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import shutil
 import time
+import uuid
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ import cv2
 import numpy as np
 
 from stereo_pose.persistence.paths import auto_dir
+from stereo_pose.calibration.package import atomic_npz
 
 _SCHEMA_VERSION = "1"
 
@@ -409,7 +411,7 @@ class RuntimeCalibration:
         out_dir = auto_dir(self.calibration_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out = out_dir / f"stereo_{stamp}.npz"
+        out = out_dir / f"stereo_{stamp}_{uuid.uuid4().hex}.npz"
 
         save_fields = {
             "K1": solution["K1"], "D1": solution["D1"],
@@ -433,7 +435,7 @@ class RuntimeCalibration:
             "_schema_version": np.array(_SCHEMA_VERSION),
         }
         save_fields.update(self._camera_context_fields())
-        np.savez(out, **save_fields)
+        atomic_npz(out, save_fields)
 
         result = {
             "path": out,

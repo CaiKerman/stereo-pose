@@ -1,3 +1,11 @@
+## Task003A P0 delivery (2026-10-12)
+
+World/relative-origin alignment, immutable stereo+world NPZ with exact activation/restart, live eye/selected-joint XYZ and manual T CSV at nominal 5Hz are implemented on the existing `trae/agent-c3dfMx` / PR #3.
+No merges or PR-base changes. Preserve local config/runtime/model when updating code; old config merges new defaults.
+Press W -> edit real reference XYZ CSV -> R fit -> verify physical axes -> U up confirmation -> Enter save/activate. Z selects first-point origin-only mode; T starts/stops CSV, default OFF.
+See [operator/NPZ/CSV contract](docs/protocols/WORLD_NPZ_CSV_V1.md), Chinese `README_先看我.txt`, and [actual test report](TEST_REPORT.md).
+Full deterministic suite: 261 methods + 26 subtests; Windows/physical camera/YOLO acceptance and absolute accuracy are not certified. P1/P2 excluded. Legacy v1.2 remains camera coordinates and original joint/statistic semantics.
+
 # stereo-pose
 
 Stereo-camera 3D human pose measurement and calibration system.
@@ -85,8 +93,43 @@ Put a local pose model (e.g. `yolo11n-pose.pt`) at the path configured in
 python -m stereo_pose run --config config.json
 ```
 
+The bundled `RUN_ME.bat`/`RUN_ME.py` launcher first opens an interactive
+camera-selection window (discover → live preview → assign LEFT/RIGHT by
+number keys; `camera.selection.startup_pick`, default true) so the operator
+can visually pick the two physical cameras without editing config.json. The
+confirmed choice is atomically persisted to the local config; cancelling
+leaves it untouched. From the CLI the picker is opt-in via
+`python -m stereo_pose run --camera-pick` (explicit `--left-cam`/`--right-cam`
+always take precedence; noninteractive runs never open a GUI). The environment
+variable `STEREO_POSE_NO_CAMERA_PICK` force-disables the startup picker.
+
 Run-time generated artifacts (calibrations, sessions, logs, captures) stay
 under `runtime/` and are not committed.
+
+### Tracking hotkeys and on-demand snapshots
+
+During tracking, `S` saves a single paired-frame diagnostic snapshot into
+`runtime/diagnostics/snapshots/<timestamp>/`: left/right raw PNGs, annotated
+PNGs (keypoint name + confidence), a versioned `manifest.json`
+(`stereo_pose_3d/snapshot/v2`) that always preserves the RAW observed
+keypoint uv/confidence (including zero-confidence placeholders) and marks
+usability separately (`missing`/`missing_reason`/`low_confidence`), plus a
+self-contained `calibration_snapshot.npz` when a calibration is active. The
+snapshot reuses the already-captured frames and the already-completed pose
+inference — no second camera read, no second YOLO pass. Writes are staged in
+a `.partial` directory and atomically renamed, so a failed save can never
+leave a half-written folder. Replay the epipolar evidence offline with
+`python tools/inspect_snapshot.py <snapshot_dir>` (NumPy + OpenCV only; exit
+0 = matched, 1 = replay impossible, 2 = stored values mismatch). `M`
+toggles the developer overlay: the collapsed default keeps the display
+uncluttered (cameras, calibration state, accepted joints, full-loop FPS,
+live warnings); the expanded view adds rejection counts, stereo
+RMS/epipolar/reprojection, host grab skew, One Euro internals, the
+capture-only grab period, and the full hotkey row. Live warnings are always
+shown in both views, and the reported FPS is the measured end-to-end loop
+rate, not the camera capture cycle.
+
+Snapshot folders contain human imagery — never commit or upload them.
 
 ## Running tests
 

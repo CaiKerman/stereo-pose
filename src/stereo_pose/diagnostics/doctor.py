@@ -92,6 +92,7 @@ def run_doctor(cfg) -> dict:
         "python_implementation": platform.python_implementation(),
         "opencv_version": _pkg_version("cv2"),
         "numpy_version": _pkg_version("numpy"),
+        "aruco_available": _aruco_available(),
         "torch": _torch_info(),
         "pose_model": {
             "configured_path": str(pose_model),
@@ -107,6 +108,14 @@ def run_doctor(cfg) -> dict:
     }
 
 
+def _aruco_available():
+    try:
+        import cv2
+        return hasattr(cv2, "aruco")
+    except ImportError:
+        return False
+
+
 def render_doctor(info: dict) -> str:
     t = info["torch"]
     lines = [
@@ -114,6 +123,7 @@ def render_doctor(info: dict) -> str:
         f"  python            : {info['python_version']} ({info['python_implementation']})",
         f"  opencv            : {info['opencv_version'] or 'NOT INSTALLED'}",
         f"  numpy             : {info['numpy_version'] or 'NOT INSTALLED'}",
+        f"  world marker IDs  : {'ArUco available' if info.get('aruco_available') else 'cv2.aruco missing; install a local ArUco-capable OpenCV build for W'}",
     ]
     if t["installed"]:
         cuda = f"available, {t['cuda_device_count']} device(s)" if t["cuda_available"] else "not available"
