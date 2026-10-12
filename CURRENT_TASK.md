@@ -1,39 +1,28 @@
 # CURRENT_TASK
 
-## Active: Task 002B — Stereo diagnostic snapshots + compact developer menu
+## Next planned: Task 003A — World alignment, live XYZ and manual 5Hz CSV
 
-- **Status:** IMPLEMENTED — S snapshot + offline replay + M menu committed; awaiting GPT review (no merge). Real `S` capture on hardware still needs owner acceptance.
+- **Status:** REQUIREMENTS PUBLISHED / WAITING CODING AGENT AND OWNER-APPROVED BRANCH BASE. No Task003A feature code has been started.
+- **Issue:** https://github.com/CaiKerman/stereo-pose/issues/5
+- **Full instruction:** `docs/instructions/003A_WORLD_ALIGNMENT_LIVE_READOUT_CSV.md`
+- **New-conversation handoff:** `docs/handoffs/20261012_TASK003A_HANDOFF.md`
+- **Priority:** **P0 only** — engineering XYZ via known real fiducials and rigid C→W coordinate transform (no scale), immutable unified stereo+world NPZ + correct restart activation, live eyes/selected joints XYZ, `T` manual CSV capture default OFF at nominal 5Hz. No video, events, plots, playback or P1/P2.
+- **Accuracy status:** Eye P95≤5mm, shoulder/elbow P95≤10mm are targets, not achieved or independently confirmed. Task002C root-cause investigation deferred and no quality gates are to be relaxed.
+- **Git status:** PR #2 `feat/002-metric-validation-diagnostics` -> `main` OPEN; PR #3 `trae/agent-c3dfMx` -> PR #2 source branch OPEN. Do not implement from stale `main`.
+- **Documentation location:** Task003A issue/spec/handoff are published on the **existing** PR #3 branch to avoid creating a coding branch/PR without approval.
+- **CODING BRANCH NOT YET AUTHORIZED:** This section does NOT direct a new agent to add Task003A implementation commits to `trae/agent-c3dfMx`. The owner must explicitly approve a separate non-destructive stacked branch/PR rooted at the verified current PR #3 tip (or an approved safe merge plan) before coding starts. No merge/rebase/force-push/delete of existing branches.
+- **Startup for new agent:** read `AGENTS.md`, `REVIEW_INBOX.md`, this file, Issue #5, full instruction, handoff, current modules & tests; verify upstream SHA; agree branch arrangement with owner; implement in stages 003A-1/2/3; request GPT review before merge. No face photos, per-person recordings, real NPZ or runtime artifacts in GitHub.
+
+## Previous task: Task 002B — Stereo diagnostic snapshots + compact developer menu
+
+- **Status:** Implementation and final *code* review passed for owner S/M hardware acceptance on PR #3; do **not** interpret as permission to merge or precision closure. Later owner supplied 3 snapshot groups and offline analysis; `M` full operator check and picker cancel/rescan were not formally confirmed.
 - **Issue:** https://github.com/CaiKerman/stereo-pose/issues/4
-- **Full spec:** `docs/instructions/002B_STEREO_SNAPSHOT_AND_DEBUG_MENU.md`
-- **Existing working branch:** `trae/agent-c3dfMx`
-- **Existing working PR:** #3 -> `feat/002-metric-validation-diagnostics`
-- **Parent task/PR:** Task 002, PR #2 -> `main` (remain unmerged)
+- **Spec:** `docs/instructions/002B_STEREO_SNAPSHOT_AND_DEBUG_MENU.md`
+- **Review verdict:** https://github.com/CaiKerman/stereo-pose/pull/3#issuecomment-6063507171
+- **Legacy numerical protocol:** `stereo_pose_3d/v1.2` uses rectified-left-camera XYZ in mm; must never silently be changed to world XYZ.
+- **Physical:** two external webcams, user has moved between arrangements; latest private diagnostic snapshots showed LEFT CAM1, RIGHT CAM2, ~555.5mm baseline, 1280x720; camera indexes are not physical identity. The true eye spatial position has no independent reference, so no absolute precision claim.
+- **Historical acceptance:** Task002 initial real V and D worked, with eye/shoulder/elbow epipolar rejections; S snapshot and offline replay code have been validated. Existing 3px epi and related gates remain.
 
-### Agent startup (follow in order)
+## Other prior history
 
-1. Pull the **existing** `trae/agent-c3dfMx` branch; do not start from stale `main`.
-2. Read `AGENTS.md`, `REVIEW_INBOX.md`, this file and **`docs/instructions/002B_STEREO_SNAPSHOT_AND_DEBUG_MENU.md`**.
-3. Read Issue #4 and the existing Task 002/002A instructions for compatibility.
-4. Implement the **S one-shot stereo frame+2D joints diagnostic snapshot and offline replay first**.
-5. Implement the **M toggleable compact Developer/Diagnostics menu second**.
-6. Add deterministic tests, update all review artifacts, push to the **same existing branch/PR #3**.
-7. **STOP for GPT code review**. Do not merge, delete branches, create extra PRs/branches, or change PR base. If Trae Cloud absolutely requires new branch topology, ask owner approval before acting.
-
-### Hardware facts already confirmed by owner
-
-- Two external USB webcams selected on a 3-camera laptop: LEFT CAM 2, RIGHT CAM 1.
-- Both webcam positions changed. New physical lens-center baseline approximately 552 mm is **correct**. Do not use old approximately 289 mm spacing as a calibration fault.
-- Checkerboard V successfully saved 3 x 54/54-corner reports; 3D-scale deviation exists (far view -2.165%), but calibration works.
-- D revealed human joint epipolar rejections frequently far above 3px; no cause established. **Do not relax the gate** or assume left-right label swapping without frame evidence.
-
-### Scope / protection
-
-- No new required dependencies, automatic pip or online uploads.
-- Never commit real user camera frames or calibration artifacts to GitHub.
-- Keep calibration and snapshots in bounded `runtime/`; preserve v1.2 output protocol and all existing hotkeys.
-- Task 002C root-cause fix and Task 003 world coordinate system are **not in this task**.
-- Camera-picker cancel / hotplug rescan remain outstanding owner manual checks; do not invent a pass.
-
-## Previous task context (not active)
-
-The parent `docs/instructions/002_METRIC_VALIDATION_DIAGNOSTICS.md` implemented per-joint D diagnosis and checkerboard V metrics. `docs/instructions/002A_CAMERA_SELECTION_PRETEST.md` implemented the pre-test camera selection UI on PR #3. Both code paths were evaluated by reviewer; owner has performed a successful visual-pick/confirm and D/V workflow. Parent Task002 and PRs #2/#3 remain **open and unmerged** until targeted diagnosis and end-to-end stability acceptance.
+Task002 source PR #2 introduced `D` per-joint rejection diagnostics and `V` checkerboard 3D metrics. Task002A within PR #3 introduced visual camera picker; Task002B within PR #3 introduced S snapshots and M menu. Previous detailed Task002B instructions remain in `docs/instructions/002B_STEREO_SNAPSHOT_AND_DEBUG_MENU.md` and previous reviewer findings in `REVIEW_INBOX.md`.
