@@ -1,3 +1,13 @@
+## Task003A additions
+
+The tracking loop processes the union of legacy-selected and live-readout joints once, with the same C geometry/quality/speed/One Euro gates. A projected PoseFrame preserves legacy selected joints and statistics for v1.2. A separate fresh readout contains eyes/midpoint, accepted raw/filtered C/W and distinctly rejected candidate/missing values. It feeds the display and manual recorder without further camera acquisition/YOLO.
+
+W freezes the current pair for on-demand ArUco detection and reference CSV correspondence. Proper no-scale fit/relative zero -> axes preview/up confirmation -> new immutable combined saved NPZ -> explicit config path/hash preference -> restart same artifact. Stereo re-solve uniquely/atomically publishes a new auto archive, persists its selection and invalidates W. P remains preserve-copy only.
+
+T starts a unique recording session; absolute monotonic deadlines select new processed frames only. C/W/F/resolution/calibration change or exit segments/stops. CSV streams accepted/candidate/missing rows; JSON freezes calibration/world/model/actual device/quality/full filtering/camera sizes and lifecycle. Cleanup refuses recording roots and excludes current active auto NPZ.
+
+Contract: ../protocols/WORLD_NPZ_CSV_V1.md. Runtime outputs: runtime/world/reference_points.csv, runtime/calibrations/saved/world_*.npz, runtime/recordings/session_*/joints.csv + session.json. Generated private files are not Git fixtures.
+
 # Data flow
 
 The live pipeline data flow (port of the validated v1.2 behavior).

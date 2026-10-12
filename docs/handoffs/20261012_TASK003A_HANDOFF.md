@@ -1,3 +1,17 @@
+# Stereo Pose Task003A — delivery update (2026-10-12)
+
+**P0 implementation completed by GPT after owner-authorized takeover; deterministic verification passed.**
+Implementation head: [08da0e6](https://github.com/CaiKerman/stereo-pose/commit/08da0e6ef0e10711bc1c341302bdec3b5daac312).
+Same existing `trae/agent-c3dfMx` / PR #3, unchanged base, no merges.
+Full suite: 261 methods + 26 pytest subtest cases; unittest 261 OK. Actual Windows/cameras/YOLO/physical accuracy remain owner acceptance, not inferred from injected tests.
+Current operator and archive/CSV contract: [WORLD_NPZ_CSV_V1.md](../protocols/WORLD_NPZ_CSV_V1.md).
+Current status and results: [CURRENT_TASK.md](../../CURRENT_TASK.md), [TEST_REPORT.md](../../TEST_REPORT.md).
+Start with existing valid stereo calibration if the physical rig is unchanged; use W/R/U/Enter for alignment, Z for one-point origin only, T for optional CSV. Keep local config/runtime/model when updating code.
+
+The document below is the **preparation-stage handoff history**. Its waiting-for-coding statements and message to another coding agent describe the earlier assignment, not the current implementation state.
+
+## Original preparation handoff
+
 # Stereo Pose Task003A 编码与审核交接 — 2026-10-12
 
 > 本文件供编码智能体与 GPT 审核者使用。只含任务/架构/验证要求，不含真实用户图像、快照、人体记录或标定 NPZ。
@@ -149,3 +163,4 @@ ChArUco 5×7（28/20mm）和 7×10（20/14mm）；备份 DICT_5X5_50 ID0–5（5
 ## 10. 业主可复制给编码智能体的消息
 
 > 从现有 `trae/agent-c3dfMx` 分支最新 head 继续实现 Task003A，更新原 PR #3，base 保持 `feat/002-metric-validation-diagnostics`。我已授权在这个分支继续，无需新建分支/PR。先读取 AGENTS.md、CURRENT_TASK.md、REVIEW_INBOX.md 顶部、Issue #5、完整 Task003A 规格与本交接，先跑基线测试。只开发 P0：工程世界坐标与置零、统一 stereo+world NPZ 保存及重启恢复、眼点/关节实时 XYZ、T 手动 5Hz CSV；按 003A-1/2/3 提交检查点。精度闭环暂缓，P1/P2 不做。保留质量门槛、legacy v1.2 和既有热键，不上传用户人脸/快照/NPZ/人体记录。提交代码与精确测试报告后停止，交 GPT 审核；不合并、改 base、变基、强推或删分支。
+

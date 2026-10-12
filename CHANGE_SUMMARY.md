@@ -1,3 +1,35 @@
+# Task003A P0 — implementation complete (2026-10-12)
+
+## Added
+- Pure no-scale proper rigid fit/degeneracy/residual reporting and translation-only origin.
+- ArUco ID/feature CSV adapter with triangulated physical centers; W frozen-pair preview/axes/up/name/confirm/cancel.
+- Immutable stereo+world NPZ and explicit file/hash activation/restart.
+- Shared measurement pass with legacy projection and fresh eye/joint/candidate readout.
+- Manual T CSV recorder, true monotonic cadence, frozen metadata, streaming/error/exit handling.
+- 47 new deterministic methods; operator/protocol documentation and synthetic examples.
+
+## Modified
+- runner/config/schema/defaults, doctor ArUco diagnostics, launcher labels, review/status documents.
+- Cleanup excludes recording subtrees and protects active auto NPZ; G errors stay local to cleanup.
+- Stereo solver archive publication now unique/atomic/no-overwrite; its solve algorithm and numerical arrays remain unchanged.
+- Runtime private world/recording paths excluded from tracking.
+
+## Deleted
+No files. The inline joint loop was replaced by a shared function preserving the legacy selected-joint projection.
+
+## Behavior/numerical/protocol/config changes
+- New W view is an additional no-scale C->W coordinate transform after original quality/filtering; no gate changes or numerical reinterpretation of old v1.2.
+- Eyes processed without extra YOLO; legacy selected joints, coordinates, fields and aggregate means/counts preserved.
+- Defaults: readout upper + eyes/midpoint; world DICT_4X4_50 with editable runtime CSV; recording enabled feature but auto_start=false, nominal 5Hz.
+- W confirmation saves/activates a new saved NPZ; C/R clears W and persists new stereo selection. P remains preserve-copy only.
+- T/C/W/F/exit session behavior and NPZ/CSV contracts in docs/protocols/WORLD_NPZ_CSV_V1.md.
+
+## Verification / remaining limits
+261 methods + 26 pytest subtest cases passed; unittest 261 OK. Real geometry/ArUco/files, fake hardware/model/windows. Windows/live rig and absolute accuracy not certified. P1/P2 excluded.
+Implementation head: `08da0e6ef0e10711bc1c341302bdec3b5daac312`; same PR #3/base, PR #2 unmerged, no topology changes.
+
+## Previous summaries
+
 # Task003A handoff update — 2026-10-12
 
 - **Added:** owner-authorized current-branch startup, architecture pre-review, phased development and acceptance matrix in the handoff.

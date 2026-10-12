@@ -1,3 +1,15 @@
+# Review for owners — Task003A P0 delivery
+
+- Latest owner instruction at 2026-10-12 19:30 Asia/Shanghai authorized GPT to finish if the other coding agent had not delivered. GitHub still had only handoff commit `389042e` at takeover; no remote implementation/new branch/PR was found. Unpublished work in another agent's environment is not observable.
+- **Implementation completed and deterministic verification passed.** Implementation head: `08da0e6ef0e10711bc1c341302bdec3b5daac312`.
+- Existing PR: https://github.com/CaiKerman/stereo-pose/pull/3 ; branch `trae/agent-c3dfMx`, unchanged base `feat/002-metric-validation-diagnostics`. Parent PR #2/main are unchanged/unmerged.
+- No routine implementation decision awaits permission. Required next decision is owner acceptance on the physical Windows installation before merge. No merge authorization is requested/assumed by this delivery.
+- Material limits: physical rig movement cannot be established from numeric camera indexes/file hashes; verify unchanged mounts/order or recalibrate/re-register. Registration residual and repeated eye points do not prove eye absolute accuracy. Three controls have no independent redundancy.
+- Owner should test W -> entered real XYZ -> R/U/Enter, restart same W, optional Z/one-point zero, fresh accepted vs candidate eye/joint values, T start/stop CSV and old hotkeys/picker cancel-rescan. Use the existing valid stereo calibration when the physical rig is unchanged.
+- See TEST_REPORT.md for exact results/platform and docs/protocols/WORLD_NPZ_CSV_V1.md for actual behavior. The implementing GPT performed self-review and reproduced tests; this is not a second independent human/code-owner review.
+
+## Historical owner records
+
 # Review for owners
 
 ## Task003A P0 — owner decision and review handoff (2026-10-12)

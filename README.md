@@ -1,3 +1,11 @@
+## Task003A P0 delivery (2026-10-12)
+
+World/relative-origin alignment, immutable stereo+world NPZ with exact activation/restart, live eye/selected-joint XYZ and manual T CSV at nominal 5Hz are implemented on the existing `trae/agent-c3dfMx` / PR #3.
+No merges or PR-base changes. Preserve local config/runtime/model when updating code; old config merges new defaults.
+Press W -> edit real reference XYZ CSV -> R fit -> verify physical axes -> U up confirmation -> Enter save/activate. Z selects first-point origin-only mode; T starts/stops CSV, default OFF.
+See [operator/NPZ/CSV contract](docs/protocols/WORLD_NPZ_CSV_V1.md), Chinese `README_先看我.txt`, and [actual test report](TEST_REPORT.md).
+Full deterministic suite: 261 methods + 26 subtests; Windows/physical camera/YOLO acceptance and absolute accuracy are not certified. P1/P2 excluded. Legacy v1.2 remains camera coordinates and original joint/statistic semantics.
+
 # stereo-pose
 
 Stereo-camera 3D human pose measurement and calibration system.

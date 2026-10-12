@@ -1,5 +1,25 @@
 # CURRENT_TASK
 
+## Task003A P0 — implemented; owner hardware acceptance pending
+
+- **Latest instruction (2026-10-12 19:30 Asia/Shanghai):** owner asked GPT to check the other agent's delivery and finish this development if incomplete.
+- **Takeover evidence:** branch remained at documentation-only `389042ee2849a1b3148c04d0ddd63eaf09ab8372`; no new remote code/branch/PR. The other agent's unpublished local work is not observable.
+- **Status:** IMPLEMENTATION COMPLETE / DETERMINISTIC VERIFICATION PASSED; awaiting Windows/physical owner acceptance, not approved for merge.
+- **Implementation head:** `08da0e6ef0e10711bc1c341302bdec3b5daac312`.
+- **Branch/PR:** existing `trae/agent-c3dfMx` / https://github.com/CaiKerman/stereo-pose/pull/3 .
+- **Base:** unchanged `feat/002-metric-validation-diagnostics`; parent PR #2 -> main remains open/unmerged. No new branch/PR, merge, retarget, rebase, force-push or deletion.
+- **Issue:** https://github.com/CaiKerman/stereo-pose/issues/5 .
+- **Scope completed:** P0 engineering rigid world coordinates + translation-only zero, unified immutable NPZ + exact activation/restart, fresh eye/selected joint XYZ, T manual nominal 5Hz CSV (default OFF).
+- **Verification:** full pytest 261 methods + 26 subtests, unittest 261 OK; original 214-method baseline independently reproduced before edits. Hardware/model/Windows UI injected; actual owner hardware untested.
+- **Sources:** docs/instructions/003A_WORLD_ALIGNMENT_LIVE_READOUT_CSV.md ; docs/protocols/WORLD_NPZ_CSV_V1.md ; TEST_REPORT.md ; REVIEW_INBOX.md .
+- **Deferred:** Task002C absolute accuracy/root cause and P1/P2. Original quality gates and legacy v1.2 camera XYZ/statistics remain unchanged.
+- **Next:** owner tests current code in the existing working environment, keeping local model/config/runtime data. Check W/R/U/Enter, restart W, optional Z, eyes/candidates, T CSV, S/M/D/V and picker cancel/rescan. Any later code change requires regression and a reviewable commit on this same branch.
+- **Privacy:** only synthetic examples/tests committed; user face snapshots, real calibration and recordings remain local.
+
+## Earlier handoff and audit history (superseded active status)
+
+# CURRENT_TASK
+
 ## Active: Task 003A — P0 world alignment, live XYZ and manual 5Hz CSV
 
 - **Status:** OWNER-AUTHORIZED ON EXISTING BRANCH / HANDOFF READY; implementation pending the owner's instruction to the coding agent.
@@ -47,3 +67,4 @@
 ## Other prior history
 
 Task002 source PR #2 introduced `D` per-joint rejection diagnostics and `V` checkerboard 3D metrics. Task002A within PR #3 introduced visual camera picker; Task002B within PR #3 introduced S snapshots and M menu. Previous detailed Task002B instructions remain in `docs/instructions/002B_STEREO_SNAPSHOT_AND_DEBUG_MENU.md` and previous reviewer findings in `REVIEW_INBOX.md`.
+

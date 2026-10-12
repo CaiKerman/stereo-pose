@@ -1,0 +1,4 @@
+dictionary,id,feature_type,X_mm,Y_mm,Z_mm
+DICT_4X4_50,7,center,0,0,0
+DICT_4X4_50,3,center,100,0,0
+DICT_4X4_50,2,center,0,100,0

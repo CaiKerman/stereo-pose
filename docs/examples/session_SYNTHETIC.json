@@ -1,0 +1,145 @@
+{
+  "schema": "stereo_pose_3d/csv/v1",
+  "synthetic_example": true,
+  "example_note": "Invented data, not a person or capture; zero SHA is a placeholder. Do not use as real calibration identity.",
+  "status": "stopped",
+  "video_recording": false,
+  "unit": "mm",
+  "started_at": "2026-01-01T00:00:00+00:00",
+  "stopped_at": "2026-01-01T00:00:00.400000+00:00",
+  "start_monotonic_ns": 0,
+  "duration_s": 0.4,
+  "sample_rate_hz_requested": 5,
+  "sample_rate_hz_achieved": 5,
+  "samples_completed": 2,
+  "stop_reason": "manual",
+  "error": null,
+  "csv_columns": [
+    "sample_index",
+    "frame_index",
+    "timestamp_ns",
+    "frame_monotonic_ns",
+    "sample_monotonic_ns",
+    "elapsed_s",
+    "joint",
+    "status",
+    "valid",
+    "reason",
+    "derived",
+    "coordinate_frame",
+    "unit",
+    "calibration_sha256",
+    "filtering_enabled",
+    "camera_raw_mm_x",
+    "camera_raw_mm_y",
+    "camera_raw_mm_z",
+    "camera_filtered_mm_x",
+    "camera_filtered_mm_y",
+    "camera_filtered_mm_z",
+    "world_raw_mm_x",
+    "world_raw_mm_y",
+    "world_raw_mm_z",
+    "world_filtered_mm_x",
+    "world_filtered_mm_y",
+    "world_filtered_mm_z",
+    "candidate_camera_mm_x",
+    "candidate_camera_mm_y",
+    "candidate_camera_mm_z",
+    "candidate_world_mm_x",
+    "candidate_world_mm_y",
+    "candidate_world_mm_z",
+    "confidence_left",
+    "confidence_right",
+    "quality_score",
+    "epipolar_error_px",
+    "reprojection_error_px",
+    "speed_mm_s"
+  ],
+  "calibration_file": "synthetic_full_calibration.npz",
+  "calibration_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "coordinate_frame": "SYNTHETIC RELATIVE",
+  "source_frame": "rectified_left_camera",
+  "model": "yolo11n-pose.pt",
+  "device": "cpu",
+  "selected_joints": [
+    "left_eye",
+    "right_eye",
+    "eye_midpoint"
+  ],
+  "world": {
+    "name": "SYNTHETIC RELATIVE",
+    "R_wc": [
+      [
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        1
+      ]
+    ],
+    "t_wc_mm": [
+      0,
+      0,
+      -1000
+    ],
+    "definition": {
+      "mode": "zero",
+      "up_confirmed": false,
+      "axes": "camera axes preserved; no gravity claim",
+      "reference_points": [
+        {
+          "dictionary": "DICT_4X4_50",
+          "id": 7,
+          "feature_type": "center",
+          "xyz_mm": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  },
+  "quality": {
+    "max_epipolar_error_px": 3,
+    "max_reprojection_error_px": 2.5,
+    "min_depth_mm": 250,
+    "max_depth_mm": 7000,
+    "min_quality_score": 0.12,
+    "max_joint_speed_mm_s": 6000,
+    "speed_gate_reset_after_s": 0.6
+  },
+  "filtering": {
+    "enabled": true,
+    "type": "one_euro",
+    "min_cutoff": 1.2,
+    "beta": 0.015,
+    "d_cutoff": 1,
+    "reset_after_s": 0.6
+  },
+  "camera": {
+    "left": 0,
+    "right": 1,
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "backend": "auto"
+  },
+  "actual_image_size_left": [
+    1280,
+    720
+  ],
+  "actual_image_size_right": [
+    1280,
+    720
+  ],
+  "timing_note": "host timing only; not sensor exposure timestamps"
+}

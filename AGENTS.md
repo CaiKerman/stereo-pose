@@ -31,8 +31,9 @@ Task003A continues on existing `trae/agent-c3dfMx` / PR #3, whose base remains
 `feat/002-metric-validation-diagnostics` (PR #2). The owner explicitly chose
 this workflow. Older separate-branch proposals are superseded. Do not merge,
 retarget, force-push, rebase, delete branches, or create new branch/PR.
-The coding agent starts after the owner's notification; the reviewer prepared
-documentation only.
+At 2026-10-12 19:30 the owner additionally authorized GPT to complete this
+implementation after checking the other agent's delivery. That takeover is
+within this same branch/PR authorization; no new coding-approval gate applies.
 
 ## 2.1 Review feedback channel
 

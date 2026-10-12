@@ -1,5 +1,17 @@
 # REVIEW_INBOX.md
 
+## ACTIVE — Task003A P0 delivered / owner hardware acceptance pending
+
+Latest owner authorized GPT takeover at 2026-10-12 19:30; no new remote implementation had been delivered by the other coding agent.
+Implementation head: `08da0e6ef0e10711bc1c341302bdec3b5daac312`, same branch/PR #3/base. P0 implemented, 261 methods + 26 subtests passed; unittest 261 OK. No merge/retarget/new branch/rebase/force-push/deletion.
+Key verified gates: proper no-scale fit and planar controls, marker identity/physical center, immutable package and explicit restart, C/W/candidate separation and legacy statistics, T default OFF/fresh-frame cadence, frozen full metadata, error recovery, protected recordings/active calibration, complete regression.
+Remaining: owner Windows/physical camera/model/marker/axis/restart/CSV/hotkey acceptance; precision closure deferred, P1/P2 excluded.
+Read CURRENT_TASK.md, TEST_REPORT.md and docs/protocols/WORLD_NPZ_CSV_V1.md. Historical OPEN/pending statements below do not roll the active task back to earlier handoff readiness.
+
+## Preparation and historical reviewer records
+
+# REVIEW_INBOX.md
+
 ## ACTIVE — Task003A P0 owner authorization and coding handoff (2026-10-12)
 
 **Status: HANDOFF READY / OWNER-AUTHORIZED EXISTING BRANCH; implementation pending owner notification.**

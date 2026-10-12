@@ -1,3 +1,53 @@
+# Task003A P0 implementation verification — 2026-10-12
+
+Implementation head: `08da0e6ef0e10711bc1c341302bdec3b5daac312`. Existing branch `trae/agent-c3dfMx`, PR #3 -> `feat/002-metric-validation-diagnostics`. No merge/topology change.
+
+## Executed results
+
+| Check | Actual result |
+|---|---|
+| Original baseline before edits | 214 passed, 0 failed/skipped (pytest, 2.44s) |
+| 003A-1 checkpoint | 229 passed + 13 subtests |
+| 003A-2 checkpoint | 238 passed + 13 subtests |
+| Final complete pytest | **261 passed + 26 subtests passed**, 0 failed/skipped, 3.87s |
+| Final unittest discover | **Ran 261 tests, OK**, 0 failures/skips, 2.736s |
+| JUnit XML | 287 entries = 261 methods + 26 pytest subtest cases; errors=failures=skipped=0 |
+| Offline doctor | valid config, ArUco available; weights/torch absent accurately reported |
+| compileall | src and RUN_ME.py compiled successfully before final small refinements; final modules also imported/executed by the full suite |
+
+Exact commands (dedicated test interpreter; no application dependency installation behavior changed):
+
+```bash
+/workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest tests/ -q
+/workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest tests/ -q --junitxml=/workspace/scratch/d466de06fca2/task003-test-results/regression.xml
+/workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m unittest discover -s tests -t .
+PYTHONPATH=src /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m stereo_pose doctor --json
+/workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m compileall -q src RUN_ME.py
+```
+
+## Environment and what was real
+
+Linux, CPython 3.12.14, NumPy 2.3.5, OpenCV 5.0.0.93 (headless), pytest 9.1.1.
+No torch, ultralytics, CUDA, model weights or physical cameras in this verification environment.
+Real NumPy/OpenCV rigid geometry, rectification/triangulation, generated ArUco detection, NPZ/JSON/CSV filesystem IO.
+Injected/fake clocks, camera acquisition, YOLO results, GUI key events/windows, disk-full/errors and stereo-solve output.
+Do not infer Windows GUI/camera/GPU/physical accuracy acceptance from these tests.
+
+## New regression coverage (47 methods)
+
+- test_world_alignment.py: 18 methods — proper arbitrary R/t, inverse/distance/no scale; three/coplanar/tilted controls; collinear/near-collinear/NaN; scale/outlier rejection; zero axes; CSV IDs/features; real generated ArUco and duplicate IDs; tilted physical center; old/full NPZ, D shapes, immutable save, atomic archive collision/write failure, explicit activation/restart, geometry/size/schema/object refusal.
+- test_live_world.py: 10 methods — legacy bytes/statistics invariant with extra eyes, accepted/candidate/missing/raw/filtered W/C, midpoint validity, no old-frame reuse, rendering; W fit/U/confirm/cancel, zero preserving R, one-row zero with other template rows blank, axis projection.
+- test_csv_recorder.py: 10 methods — default OFF, 30/7/5/2FPS cadence, jitter/stale/repeated frame refusal, blank missing columns/candidate isolation, nonfinite cells, frozen metadata and calibration swap, disk full, start failure, rapid unique sessions/exit, recording cleanup protection and active NPZ protection.
+- test_task003_runtime.py: 9 methods — whole injected tracking loop with exactly one pair acquisition/inference per tracking iteration; legacy group unchanged, T lifecycle, W/F segmentation, path failure, restart W without markers, C/R clearing and persisting selection, config/schema-default parity and auto-start/nonfinite/bad joint rejection.
+- All original 214 methods pass, including the 33 S snapshot/replay cases and original camera-picker/quality/filter/geometry/protocol tests.
+
+## Owner checks still required
+
+Windows RUN_ME and the actual OpenCV GUI; real two-camera + model/CUDA execution; W marker inputs and physically right-handed axes/up; selected W restart on the owner's installation; live eye/selected joint validity; T CSV cadence on actual inference throughput; M/camera-picker cancel/rescan and S/M/D/V/C/R/P/F/G.
+Absolute eye/shoulder/elbow P95 accuracy remains deferred and unproven. This is implementation/deterministic verification, not permission to merge.
+
+## Historical reports
+
 # Task003A handoff preparation — 2026-10-12
 
 **This update changes documentation only; it does not implement Task003A or claim code/hardware acceptance.**

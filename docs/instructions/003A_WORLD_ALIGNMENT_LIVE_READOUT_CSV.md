@@ -1,3 +1,5 @@
+> Implementation status (2026-10-12): owner-authorized GPT takeover completed P0 at `08da0e6ef0e10711bc1c341302bdec3b5daac312`; 261 methods + 26 subtests passed, owner hardware acceptance pending. The requirements below remain normative; earlier handoff-only role/status wording is historical. See ../protocols/WORLD_NPZ_CSV_V1.md and TEST_REPORT.md.
+
 # Instruction 003A — World Coordinate Alignment, Live Joint XYZ & On-demand CSV
 
 - **Owner decision:** 2026-10-12. **Tracking:** [Issue #5](https://github.com/CaiKerman/stereo-pose/issues/5).
