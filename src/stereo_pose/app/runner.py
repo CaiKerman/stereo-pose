@@ -24,7 +24,7 @@ from stereo_pose.capture.camera import open_camera, read_stereo_pair
 from stereo_pose.config import load_config
 from stereo_pose.app.measurements import measure_frame, make_readout, append_readout
 from stereo_pose.app.world_setup import run_world_setup
-from stereo_pose.calibration.package import load_registration, activate_calibration, file_sha256
+from stereo_pose.calibration.package import load_registration, activate_calibration, file_sha256, read_bundle, validate_stereo_bundle
 from stereo_pose.filtering import JointSmoother
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, resolve_joints
@@ -32,6 +32,7 @@ from stereo_pose.diagnostics.joint_diagnostics import format_diagnostic_summary
 from stereo_pose.diagnostics.snapshot import SnapshotPose, save_snapshot
 from stereo_pose.models import FilteredJoint3D, FrameDiagnostics, FrameTiming, JointQuality, PoseFrame
 from stereo_pose.outputs import build_publisher
+from stereo_pose.outputs.csv_recorder import CsvRecorder
 from stereo_pose.outputs.v1_message import to_v1_message
 from stereo_pose.persistence import cleanup_project, promote_calibration
 from stereo_pose.pose import PoseEstimator, resolve_device
@@ -240,6 +241,7 @@ def run(args, cfg):
             keep_latest=cl.get("keep_latest_calibrations", 10),
             failed_days=cl.get("delete_failed_sessions_older_days", 7),
             verbose=True,
+            protected_files=[s.get("explicit_file")] if s.get("load") == "explicit" else [],
         )
 
     device = resolve_device(p["device"])
@@ -248,6 +250,7 @@ def run(args, cfg):
         resolve_joints(cfg["readout"]["joint_group"], cfg["readout"].get("joints") or None)))
     registration = None
     world_warnings = []
+    active_artifact_sha = None
 
     calib_path = None
     triangulator = None
@@ -256,9 +259,13 @@ def run(args, cfg):
         calib_path = newest_calibration(s["calibration_dir"], explicit)
         if s.get("load") == "explicit" and s.get("active_sha256") and file_sha256(calib_path) != s["active_sha256"]:
             raise ValueError("selected calibration SHA-256 mismatch; reselect known artifact, no fallback")
+        validate_stereo_bundle(read_bundle(calib_path))
         triangulator = StereoTriangulator(calib_path)
+        active_artifact_sha = file_sha256(calib_path)
     except (FileNotFoundError, ValueError, OSError) as e:
         calib_path = None
+        triangulator = None
+        active_artifact_sha = None
         print(f"[warning] {e}")
         print("[warning] 3D output disabled until you create a calibration with C -> R.")
 
@@ -317,6 +324,10 @@ def run(args, cfg):
     )
     print("Calibration: AUTO waits for STABLE | SPACE=manual force capture | R=solve | X=discard | C=return\n")
 
+    recorder = CsvRecorder(cfg["recording"]["output_dir"], runtime_root,
+        sample_rate_hz=cfg["recording"]["sample_rate_hz"],
+        include_candidates=cfg["recording"]["include_rejected_candidates"])
+
     frame_index = 0
     kp_conf = float(p["keypoint_confidence"])
     alternate_grab = bool(c.get("alternate_grab_order", True))
@@ -350,6 +361,12 @@ def run(args, cfg):
             if not ok:
                 raise RuntimeError("Camera pair read failed")
 
+            if registration is not None and ((fl.shape[1], fl.shape[0]) != tuple(active_size) or
+                                              (fr.shape[1], fr.shape[0]) != tuple(active_size)):
+                recorder.stop("capture_resolution_changed")
+                registration = None
+                world_warnings = ["WORLD INVALID: capture resolution changed; recalibrate C -> R, then W"]
+
             t_filter_s = pair_timing.get("host_midpoint_perf_ns", time.perf_counter_ns()) / 1e9
             wall_timestamp_ns = pair_timing.get("wall_timestamp_ns", time.time_ns())
 
@@ -380,6 +397,7 @@ def run(args, cfg):
                             triangulator = StereoTriangulator(result["path"])
                             calib_path = result["path"]
                             registration = None
+                            active_artifact_sha = file_sha256(calib_path)
                             world_warnings = ["WORLD unavailable after new stereo solve; press W to re-register"]
                             try:
                                 s.update(activate_calibration(args.config, calib_path))
@@ -406,6 +424,7 @@ def run(args, cfg):
                                     keep_latest=cl.get("keep_latest_calibrations", 10),
                                     failed_days=cl.get("delete_failed_sessions_older_days", 7),
                                     verbose=True,
+                                    protected_files=[calib_path],
                                 )
                         except Exception as e:
                             print(f"[calibration] solve failed: {e}")
@@ -438,6 +457,7 @@ def run(args, cfg):
             mean_reproj = frame.frame_quality["mean_reprojection_error_px"]
             readout_rows = make_readout(readout_joints, all_accepted, all_verdicts, geometries, registration)
             publisher.publish(to_v1_message(frame))
+            recorder.sample(frame, readout_rows)
 
             if diagnostics_enabled and frame_index % diag_every == 0:
                 print(format_diagnostic_summary(frame_index, diagnostics))
@@ -490,25 +510,31 @@ def run(args, cfg):
                 one_euro_d=smoother.d_cutoff,
                 alarms=alarms,
             ))
-            canvas = append_readout(canvas, readout_rows, registration, world_warnings=world_warnings)
+            canvas = append_readout(canvas, readout_rows, registration, recorder.status(), world_warnings=world_warnings)
             cv2.imshow("Stereo Pose 3D", canvas)
             key = cv2.waitKey(1) & 0xFF
 
             if key in (ord("c"), ord("C")):
+                recorder.stop("enter_calibration")
                 calibrator.start()
             elif key in (ord("f"), ord("F")):
+                recorder.stop("filter_changed")
                 enabled = smoother.toggle()
                 smoother.reset()
                 speed_gate.reset()
                 print(f"[filter] One Euro smoothing {'ON' if enabled else 'OFF'}")
             elif key in (ord("g"), ord("G")):
-                cleanup_project(
-                    s["calibration_dir"], cr["session_dir"],
-                    runtime_root=runtime_root,
-                    keep_latest=cl.get("keep_latest_calibrations", 10),
-                    failed_days=cl.get("delete_failed_sessions_older_days", 7),
-                    verbose=True,
-                )
+                try:
+                    cleanup_project(
+                        s["calibration_dir"], cr["session_dir"],
+                        runtime_root=runtime_root,
+                        keep_latest=cl.get("keep_latest_calibrations", 10),
+                        failed_days=cl.get("delete_failed_sessions_older_days", 7),
+                        verbose=True,
+                        protected_files=[calib_path],
+                    )
+                except Exception as e:
+                    print("[cleanup] refused/failed; tracking continues:", e)
             elif key in (ord("p"), ord("P")):
                 if calib_path is not None:
                     try:
@@ -519,6 +545,7 @@ def run(args, cfg):
                 else:
                     print("[calibration] no active calibration to pin")
             elif key in (ord("w"), ord("W")):
+                recorder.stop("world_setup")
                 if triangulator is None:
                     print("[world] create/load stereo calibration first (C -> R)")
                 else:
@@ -528,11 +555,37 @@ def run(args, cfg):
                         if new_path is not None:
                             # Setup saves+activates atomically before exposing the new frame.
                             calib_path = new_path
+                            active_artifact_sha = file_sha256(new_path)
                             triangulator = StereoTriangulator(new_path)
                             s.update(load_config(args.config)["stereo"])
                             registration, world_warnings = load_registration(new_path, active_size)
                     except Exception as e:
                         print("[world] setup failed; previous active retained:", e)
+            elif key in (ord("t"), ord("T")):
+                if recorder.active:
+                    path = recorder.stop("manual")
+                    print(f"[recording] STOPPED samples={recorder.samples} -> {path}")
+                elif not cfg["recording"]["enabled"] or not cfg["recording"]["save_csv"]:
+                    print("[recording] CSV disabled by config")
+                elif calib_path is None:
+                    print("[recording] load/create a stereo calibration first")
+                else:
+                    try:
+                        if file_sha256(calib_path) != active_artifact_sha:
+                            raise ValueError("active NPZ changed on disk; reselect/re-register before recording")
+                        world_metadata = None if registration is None else {
+                            "name": registration["name"], "R_wc": registration["transform"].R.tolist(),
+                            "t_wc_mm": registration["transform"].t.tolist(), "definition": registration["metadata"]}
+                        path = recorder.start({
+                            "calibration_file": str(calib_path), "calibration_sha256": active_artifact_sha,
+                            "coordinate_frame": "rectified_left_camera" if registration is None else registration["name"],
+                            "source_frame": "rectified_left_camera", "world": world_metadata,
+                            "model": str(p["model"]), "camera": dict(c), "actual_image_size": list(active_size),
+                            "quality": dict(qcfg), "filtering": dict(frame.filtering),
+                            "selected_joints": list(readout_joints), "pose": dict(p)})
+                        print(f"[recording] STARTED at {cfg['recording']['sample_rate_hz']:g}Hz (export sampling) -> {path}")
+                    except Exception as e:
+                        print("[recording] start failed; tracking continues:", e)
             elif key in (ord("d"), ord("D")):
                 diagnostics_enabled = not diagnostics_enabled
                 print(f"[diagnostics] per-joint view {'ON' if diagnostics_enabled else 'OFF'}")
@@ -590,6 +643,7 @@ def run(args, cfg):
             frame_index += 1
 
     finally:
+        recorder.stop("app_exit")
         publisher.close()
         left.release()
         right.release()

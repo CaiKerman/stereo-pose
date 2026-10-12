@@ -14,7 +14,7 @@ import numpy as np
 from stereo_pose.coordinates.rigid import RigidTransform
 from stereo_pose.persistence import ensure_managed_location
 
-GEOMETRY_KEYS = ('K1','D1','K2','D2','R','T','R1','R2','P1','P2','Q','image_size','square_mm')
+GEOMETRY_KEYS = ('K1','D1','K2','D2','R','T','E','F','R1','R2','P1','P2','Q','image_size','square_mm')
 WORLD_KEYS = ('world_R','world_t_mm','world_coordinate_name','world_schema_version','world_metadata_json')
 
 
@@ -44,9 +44,23 @@ def stereo_fingerprint(bundle):
     return h.hexdigest()
 
 
+def validate_stereo_bundle(bundle):
+    for key, shape in [('K1',(3,3)),('K2',(3,3)),('R1',(3,3)),('R2',(3,3)),('P1',(3,4)),('P2',(3,4))]:
+        a=np.asarray(bundle.get(key),dtype=float)
+        if a.shape != shape or not np.all(np.isfinite(a)):raise ValueError(f'invalid {key} shape/finite calibration values')
+    for key in ('D1','D2'):
+        a=np.asarray(bundle.get(key),dtype=float)
+        if a.size not in (4,5,8,12,14) or a.ndim not in (1,2) or (a.ndim==2 and 1 not in a.shape) or not np.all(np.isfinite(a)):
+            raise ValueError(f'invalid {key} distortion vector')
+
+
 def load_registration(path, actual_size=None):
     """Return (valid registration, warnings); bad W never becomes accepted W."""
-    b = read_bundle(path)
+    try:
+        b = read_bundle(path)
+        validate_stereo_bundle(b)
+    except (ValueError, KeyError, TypeError, OSError) as e:
+        return None, [f'WORLD INVALID: unreadable/invalid calibration package: {e}']
     if not any(k in b for k in WORLD_KEYS): return None, []
     try:
         if not all(k in b for k in WORLD_KEYS): raise ValueError('incomplete world fields')
@@ -85,6 +99,7 @@ def save_registered(source, registration, calibration_dir, runtime_root):
     saved.mkdir(parents=True, exist_ok=True)
     b = read_bundle(source)
     if any(np.asarray(a).dtype.hasobject for a in b.values()): raise ValueError('pickle/object calibration is forbidden')
+    validate_stereo_bundle(b)
     # Validate stereo component with the same reader as runtime before publication.
     from stereo_pose.geometry import StereoTriangulator
     StereoTriangulator(b)
@@ -93,6 +108,8 @@ def save_registered(source, registration, calibration_dir, runtime_root):
     name = str(registration['name']).strip()
     if not name: raise ValueError('frame name is required')
     m = dict(registration['metadata'])
+    if 'image_size' not in b and 'capture_image_size' in m:
+        b['image_size']=np.asarray(m['capture_image_size'],dtype=np.int64)
     m.update(stereo_fingerprint=stereo_fingerprint(b),source_system='rectified_left_camera',
              unit='mm',created_at=utc_now(),transform_direction='C_to_W')
     if m.get('mode') != 'zero' and m.get('up_confirmed') is not True: raise ValueError('confirm physically upward +Z before saving')

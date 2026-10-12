@@ -164,6 +164,13 @@
         "square_mm": {
           "type": "number",
           "exclusiveMinimum": 0
+        },
+        "active_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
         }
       }
     },
@@ -428,6 +435,31 @@
         "max_residual_mm": {
           "type": "number",
           "minimum": 0.001
+        }
+      }
+    },
+    "recording": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "auto_start": {
+          "const": false
+        },
+        "save_csv": {
+          "type": "boolean"
+        },
+        "sample_rate_hz": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 1000
+        },
+        "output_dir": {
+          "type": "string"
+        },
+        "include_rejected_candidates": {
+          "type": "boolean"
         }
       }
     }

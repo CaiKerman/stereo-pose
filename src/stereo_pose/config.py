@@ -8,6 +8,7 @@ under ``configs/schemas/default.schema.json`` for documentation/tooling.
 from __future__ import annotations
 
 import json
+import math
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, List, Optional
@@ -96,6 +97,8 @@ DEFAULT_CONFIG: dict = {
         "jsonl_file": None,
         "udp": {"enabled": False, "host": "127.0.0.1", "port": 5005},
     },
+    "recording": {"enabled": True, "auto_start": False, "sample_rate_hz": 5,
+                  "save_csv": True, "output_dir": "runtime/recordings", "include_rejected_candidates": True},
     "readout": {"joint_group": "upper", "joints": []},
     "world": {"dictionary": "DICT_4X4_50", "reference_file": "runtime/world/reference_points.csv",
               "coordinate_name": "WORLD", "max_residual_mm": 10.0},
@@ -169,6 +172,9 @@ def _err(errors: List[str], path: str, msg: str) -> None:
 def _num(cfg_val: Any, path: str, errors: List[str], lo=None, hi=None) -> None:
     if isinstance(cfg_val, bool) or not isinstance(cfg_val, (int, float)):
         _err(errors, path, f"expected a number, got {type(cfg_val).__name__}")
+        return
+    if not math.isfinite(cfg_val):
+        _err(errors, path, "must be finite")
         return
     if lo is not None and cfg_val < lo:
         _err(errors, path, f"must be >= {lo}")
@@ -327,6 +333,16 @@ def validate_config(cfg: dict) -> None:
     _str(w.get("reference_file"), "world.reference_file", errors)
     _str(w.get("coordinate_name"), "world.coordinate_name", errors)
     _num(w.get("max_residual_mm"), "world.max_residual_mm", errors, lo=0.001)
+
+    rec = cfg.get("recording")
+    if not isinstance(rec, dict):
+        _err(errors, "recording", "must be an object")
+    else:
+        for key in ("enabled", "auto_start", "save_csv", "include_rejected_candidates"):
+            _bool(rec.get(key), "recording." + key, errors)
+        if rec.get("auto_start") is not False: _err(errors, "recording.auto_start", "must be false; T starts recording")
+        _num(rec.get("sample_rate_hz"), "recording.sample_rate_hz", errors, lo=0.001, hi=1000)
+        _str(rec.get("output_dir"), "recording.output_dir", errors)
 
     d = cfg.get("diagnostics", {})
     _bool(d.get("enabled"), "diagnostics.enabled", errors)

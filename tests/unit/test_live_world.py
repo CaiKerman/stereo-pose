@@ -96,7 +96,7 @@ class TestWInteraction(unittest.TestCase):
             'DICT_4X4_50,0,center,0,0,0\nDICT_4X4_50,1,center,100,0,0\nDICT_4X4_50,2,center,0,100,0\n')
 
     def wizard(self, keys, registration=None):
-        with patch('cv2.imshow'),patch('cv2.waitKey',side_effect=keys),patch('cv2.destroyWindow'):
+        with patch('cv2.getWindowProperty',return_value=1),patch('cv2.imshow'),patch('cv2.waitKey',side_effect=keys),patch('cv2.destroyWindow'):
             return run_world_setup(frame_left=np.zeros((720,1280,3),np.uint8),frame_right=np.zeros((720,1280,3),np.uint8),
                 triangulator=self.tri,calib_path=self.source,config_path=self.config,cfg=self.cfg,registration=registration,
                 detector=lambda frame,dictionary: self.left if not hasattr(self,'called') else self.right)
@@ -108,14 +108,14 @@ class TestWInteraction(unittest.TestCase):
             from unittest.mock import Mock
             detector=Mock(side_effect=[self.left,self.right])
             old=self.config.read_bytes();source=file_sha256(self.source)
-            with patch('cv2.imshow'),patch('cv2.waitKey',side_effect=[ord('r'),13,27]),patch('cv2.destroyWindow'):
+            with patch('cv2.getWindowProperty',return_value=1),patch('cv2.imshow'),patch('cv2.waitKey',side_effect=[ord('r'),13,27]),patch('cv2.destroyWindow'):
                 out=run_world_setup(frame_left=np.zeros((720,1280,3),np.uint8),frame_right=np.zeros((720,1280,3),np.uint8),
                     triangulator=self.tri,calib_path=self.source,config_path=self.config,cfg=self.cfg,detector=detector)
             self.assertIsNone(out);self.assertEqual(self.config.read_bytes(),old);self.assertEqual(file_sha256(self.source),source)
 
     def test_fit_confirm_save_activate(self):
         from unittest.mock import Mock
-        with patch('cv2.imshow'),patch('cv2.waitKey',side_effect=[ord('r'),ord('u'),13]),patch('cv2.destroyWindow'):
+        with patch('cv2.getWindowProperty',return_value=1),patch('cv2.imshow'),patch('cv2.waitKey',side_effect=[ord('r'),ord('u'),13]),patch('cv2.destroyWindow'):
             out=run_world_setup(frame_left=np.zeros((720,1280,3),np.uint8),frame_right=np.zeros((720,1280,3),np.uint8),
                 triangulator=self.tri,calib_path=self.source,config_path=self.config,cfg=self.cfg,
                 detector=Mock(side_effect=[self.left,self.right]))
@@ -126,7 +126,7 @@ class TestWInteraction(unittest.TestCase):
     def test_zero_mode_keeps_existing_rotation(self):
         from unittest.mock import Mock
         R=cv2.Rodrigues(np.array([.2,.1,.3]))[0];base={'transform':RigidTransform(R,[1,2,3]),'name':'old'}
-        with patch('cv2.imshow'),patch('cv2.waitKey',side_effect=[ord('z'),ord('r'),13]),patch('cv2.destroyWindow'):
+        with patch('cv2.getWindowProperty',return_value=1),patch('cv2.imshow'),patch('cv2.waitKey',side_effect=[ord('z'),ord('r'),13]),patch('cv2.destroyWindow'):
             out=run_world_setup(frame_left=np.zeros((720,1280,3),np.uint8),frame_right=np.zeros((720,1280,3),np.uint8),
                 triangulator=self.tri,calib_path=self.source,config_path=self.config,cfg=self.cfg,registration=base,
                 detector=Mock(side_effect=[self.left,self.right]))

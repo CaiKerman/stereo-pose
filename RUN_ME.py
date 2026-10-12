@@ -118,6 +118,7 @@ def main() -> None:
         print("C=calibration  AUTO waits for STABLE  SPACE=manual capture")
         print("R=solve  X=discard  P=pin/save  F=filter on/off")
         print("D=per-joint diagnostics  V=validate board  G=cleanup  Q/ESC=quit")
+        print("W=world/zero setup  T=manual CSV start/stop (default OFF, 5 Hz export)")
         print("=" * 72 + "\n")
 
         from stereo_pose.app.runner import main as run_main

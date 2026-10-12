@@ -56,6 +56,7 @@ def cleanup_project(
     keep_latest=10,
     failed_days=7,
     verbose=True,
+    protected_files=(),
 ):
     """Clean only files created by this project in its managed folders.
 
@@ -78,17 +79,25 @@ def cleanup_project(
     ensure_managed_location(cal_root, trust, "calibration_dir")
     ensure_managed_location(sess_root, trust, "session_dir")
 
+    recordings = trust / "recordings"
+    for label, target in (("calibration_dir", cal_root), ("session_dir", sess_root)):
+        if target == recordings or target.is_relative_to(recordings):
+            raise CleanupSafetyError(f"refusing {label} inside protected recordings subtree")
+
     auto = auto_dir(cal_root)
     auto.mkdir(parents=True, exist_ok=True)
 
     # Phase 1: compute every deletion candidate before deleting anything.
     cal_candidates = []
+    protected = {_resolved(p) for p in protected_files if p}
     cal_files = sorted(
         auto.glob("stereo_*.npz"),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     for p in cal_files[max(1, int(keep_latest)):]:
+        if _resolved(p) in protected:
+            continue
         if not _is_within(_resolved(p), auto):
             raise CleanupSafetyError(f"refusing to delete {p}: escapes managed auto root {auto}")
         cal_candidates.append(p)

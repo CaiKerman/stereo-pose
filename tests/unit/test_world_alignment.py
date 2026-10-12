@@ -131,6 +131,18 @@ class TestWorldPackage(unittest.TestCase):
         with patch('stereo_pose.calibration.package.read_bundle',return_value={'x':np.array({},dtype=object)}):
             with self.assertRaises(ValueError): self.save()
 
+    def test_partial_unknown_schema_and_invalid_shapes(self):
+        for field,value in [('world_schema_version',np.array('2')),('world_R',np.eye(3)*2),('D1',np.zeros((2,5)))]:
+            with self.subTest(field=field):
+                p=self.save();b=read_bundle(p);b[field]=value;np.savez(p,**b)
+                self.assertIsNone(load_registration(p)[0])
+        p=self.save();b=read_bundle(p);del b['world_t_mm'];np.savez(p,**b)
+        self.assertIsNone(load_registration(p)[0])
+
+    def test_world_metadata_object_is_refused_without_pickle(self):
+        p=self.save();b=read_bundle(p);b['world_metadata_json']=np.array({'bad':1},dtype=object);np.savez(p,**b)
+        reg,warnings=load_registration(p);self.assertIsNone(reg);self.assertTrue(warnings)
+
 
 class TestMarkerCorrespondence(unittest.TestCase):
     def test_reference_csv_explicit_types_duplicates_invalid(self):

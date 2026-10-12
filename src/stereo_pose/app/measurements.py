@@ -97,6 +97,7 @@ def append_readout(canvas, rows, registration, recorder_status='REC OFF', world_
     h=70+23*((len(rows)+1)//2)+22*len(world_warnings)
     panel=np.zeros((h,canvas.shape[1],3),np.uint8)
     frame='CAMERA FRAME' if registration is None else registration['name']
+    if registration is not None and registration.get('metadata',{}).get('mode')=='zero':frame='RELATIVE: '+frame+' (axes preserved)'
     cv2.putText(panel,f'XYZ mm | {frame} | W=align / zero | T=CSV | eye_midpoint is not gaze',(14,22),cv2.FONT_HERSHEY_SIMPLEX,.46,(255,255,255),1,cv2.LINE_AA)
     for i,row in enumerate(rows):
         field='world_filtered_mm' if registration else 'camera_filtered_mm'

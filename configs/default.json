@@ -99,5 +99,13 @@
     "reference_file": "runtime/world/reference_points.csv",
     "coordinate_name": "WORLD",
     "max_residual_mm": 10
+  },
+  "recording": {
+    "enabled": true,
+    "auto_start": false,
+    "sample_rate_hz": 5,
+    "save_csv": true,
+    "output_dir": "runtime/recordings",
+    "include_rejected_candidates": true
   }
 }
