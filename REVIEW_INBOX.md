@@ -2,6 +2,14 @@
 
 ## ACTIVE — Task003B default camera midpoint
 
+2026-10-13 readiness follow-up COMPLETE: implementation
+`3d977f45f65f77f75eac29351724ceb124d717e8`; 285 methods + 35 subtests pass,
+unittest 285 OK. Reproduced and resolved launcher model-path/BOM issues,
+missing moved explicit calibration recovery (exact SHA only), and startup camera
+resource leaks. No outstanding code blocker found. Existing physical Windows
+acceptance remains unclaimed; same PR #6, no topology changes/merge.
+Earlier implementation hashes/counts below are historical midpoint delivery.
+
 Delivered PR: https://github.com/CaiKerman/stereo-pose/pull/6 .
 Implementation head: `59b2e90e312244976372fb001da07f138b37fc6f`;
 full pytest 274 methods + 32 subtests / unittest 274 OK. Subsequent reports-only

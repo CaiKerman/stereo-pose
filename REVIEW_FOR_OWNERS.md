@@ -1,5 +1,16 @@
 # Review for owners — Task003B default midpoint
 
+2026-10-13 readiness audit: latest tested implementation
+`3d977f45f65f77f75eac29351724ceb124d717e8`, same PR #6; following completion
+commit contains documentation only. 285 methods + 35 subtests and unittest 285
+pass. Startup omissions have been corrected and exact identity migration tested.
+Safest owner operation: update code in the already working directory, keeping
+config.json/runtime/model and the same Python environment, then RUN_ME.bat.
+Windows/webcam/model/GPU execution cannot be certified here; physical frame-up
+assumption still applies. No additional permission question or merge requested.
+
+## Original midpoint delivery record
+
 - Delivery PR: https://github.com/CaiKerman/stereo-pose/pull/6 .
 - Branch: `feat/003b-default-camera-midpoint`; base `trae/agent-c3dfMx`, starting
   commit `cf408cdd252ae3f277e5d7b6cba48f7b31e7a899`.

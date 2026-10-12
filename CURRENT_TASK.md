@@ -2,6 +2,11 @@
 
 ## Task003B — default camera midpoint coordinates
 
+- Latest follow-up: owner at 2026-10-13 07:43 asked to audit completeness for one-attempt startup. Startup fixes and full verification completed on this SAME branch/PR #6.
+- Latest tested implementation: `3d977f45f65f77f75eac29351724ceb124d717e8`; documentation-only completion commit follows.
+- Latest verification: **285 pytest methods + 35 subtests passed; unittest 285 OK**, no failures/skips. Earlier 274/32 figures below describe the original midpoint delivery.
+- Startup fixes: configured model path, UTF-8 BOM configs, exact-hash moved NPZ recovery before cleanup/picker, headless-GUI diagnosis and setup failure resource release. No math/quality/dependency changes. Run latest ZIP in the working directory preserving local config/runtime/model.
+
 - Latest owner instruction: 2026-10-12 21:15 Asia/Shanghai, create a new branch and implement optical-center midpoint zero, +Y right->left, +X forward, +Z up.
 - Branch: `feat/003b-default-camera-midpoint`, starting from exact delivered parent `cf408cdd252ae3f277e5d7b6cba48f7b31e7a899`.
 - New PR base: `trae/agent-c3dfMx`; existing PR #2/#3 remain unchanged/unmerged. No merge/retarget/rebase/force-push/deletion.

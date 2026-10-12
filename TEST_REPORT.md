@@ -1,3 +1,63 @@
+# Task003B startup readiness verification — 2026-10-13
+
+Latest tested code: `3d977f45f65f77f75eac29351724ceb124d717e8`.
+Same branch `feat/003b-default-camera-midpoint`, PR #6 -> `trae/agent-c3dfMx`.
+Following completion commit changes documentation only.
+
+## Results and reproduction
+
+Linux CPython 3.12.14, NumPy 2.3.5, OpenCV 5.0.0 headless, pytest 9.1.1;
+same existing isolated interpreter, no installs/network/model downloads.
+Run from `/workspace/scratch/5f3b60f3eba2/stereo-pose`:
+
+```bash
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q tests/unit/test_launch_readiness.py tests/unit/test_camera_selection.py tests/integration/test_task003_runtime.py
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q --junitxml=/workspace/scratch/5f3b60f3eba2/task003b-readiness-pytest.xml
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m unittest discover -s tests -t . -q > /workspace/scratch/5f3b60f3eba2/task003b-readiness-unittest.log 2>&1
+git diff --check
+```
+
+- Incoming midpoint baseline: **274 methods + 32 subtests**, no failure/skip (2.80s).
+- Focused startup/picker/runtime checkpoint: **68 methods + 6 subtests**, no failure/skip (0.70s); four additional readiness methods and another startup failure stage were then added.
+- Final pytest: **285 methods + 35 subtests passed**, no failures/skips (3.97s).
+- Final unittest: **285 tests, OK**, no failures/skips (3.758s).
+- JUnit includes 320 entries (methods plus subtests), not 320 unique methods.
+- `git diff --check` clean. Synthetic files/weights and injected GUI/model/devices;
+  test weights are never loaded as a real YOLO model.
+
+## Reproduced startup omissions and fixes
+
+Configured non-default local model in a Chinese/space path previously stopped
+because launcher demanded ROOT/yolo11n-pose.pt. BOM config loading failed.
+Missing moved absolute NPZ path did not restore copied selected data. A second
+camera/model/publisher initialization failure retained previously opened handles.
+Tests reproduced these failures before changes; all now pass.
+
+- Launcher honors pose.model and is tested to dispatch to tracking without the
+  default-named weight; genuine missing weights stop before picker/tracking.
+- Config load, camera-choice write and world activation accept UTF-8 BOM and
+  preserve unrelated settings. Same-hash NPZ relocation atomically updates path;
+  a same-name/different-content file, changed existing selected file or missing
+  hash is never guessed/substituted. Recovered old auto NPZ survives cleanup.
+- Headless OpenCV is reported before picker. Resource tests verify both device
+  releases and publisher close on setup failures. Original live-loop tests
+  exercise clean normal exit, CSV lifecycle, W/default/restart and old protocol.
+- Refactoring resource ownership required the existing static S purity test to
+  inspect _run instead of its new run wrapper; all purity assertions preserved.
+
+## Practical acceptance boundary
+
+GitHub source ZIP does not include private/local config/runtime/model assets.
+For one-attempt update use the same working folder/interpreter and preserve
+these assets. A moved explicit archive requires its stored SHA for safe recovery;
+without that identity keep the original path/folder or explicitly reselect it.
+Windows batch execution, actual GUI/webcams/YOLO/CUDA and physical default signs
+remain unavailable in the cloud; no absolute hardware-success guarantee or
+precision claim is made. No mathematical/quality/schema changes, no merges.
+
+## Historical midpoint verification (2026-10-12)
+
 # Task003B verification — 2026-10-12
 
 Tested implementation head: `59b2e90e312244976372fb001da07f138b37fc6f`.

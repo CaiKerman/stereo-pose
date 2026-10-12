@@ -1,5 +1,28 @@
 # Task003B — default camera midpoint (2026-10-12)
 
+## 2026-10-13 startup readiness follow-up
+
+- Added: exact complete-file SHA recovery for a moved explicit NPZ inside the
+  configured managed calibration directory, before picker/cleanup; no filename
+  or latest-artifact substitution. 11 new startup tests + 3 subtest cases.
+- Modified: RUN_ME honors configured model path, reports selected interpreter
+  and headless OpenCV, restores sys.argv; config/camera-choice/activation accept
+  UTF-8 BOM; ExitStack releases acquired camera/publisher/window resources when
+  initialization or the main loop fails. Snapshot purity test inspects the same
+  live handler in its new _run core, preserving all assertions.
+- Deleted: no files; obsolete hardcoded default-weight check and late-only
+  resource ownership removed.
+- Behavior: existing working folder is the recommended update path; a fresh
+  folder still needs local config, runtime and configured model. A missing/hash-
+  mismatched explicit selection fails visibly rather than changing geometry.
+- Numerical/protocol/config: no coordinate math, quality, dependency, schema or
+  new config-key change. Existing settings/source archives remain intact.
+- Verification: 285 methods + 35 subtests pass; unittest 285 OK. Same branch/PR
+  #6, tested code `3d977f45f65f77f75eac29351724ceb124d717e8`. Physical Windows
+  camera/model/GPU paths untested here; earlier user's parent run worked.
+
+## Original midpoint change summary
+
 ## Added
 - Derived proper no-scale default optical-center midpoint frame: +X forward,
   +Y right->left, +Z assumed up for a level/upright rig.
