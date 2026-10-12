@@ -1,3 +1,14 @@
+# Task003A handoff preparation — 2026-10-12
+
+**This update changes documentation only; it does not implement Task003A or claim code/hardware acceptance.**
+
+- Preparation verification: current PR #2/#3 refs and ancestor relationships, reviewed-code→current-head changed files, current task/spec/rules consistency, and documentation diff/content checks.
+- Existing baseline below reports 214 passed / 0 failed / 0 skipped from the prior coding agent; no independent rerun was performed for this documentation update.
+- Live cameras, CUDA/YOLO, Windows GUI/launcher and Task003A functionality were not exercised by the handoff preparer.
+- Coding agent must run baseline before edits and report fresh exact commands/counts/platform after each phase and full regression.
+
+## Previous implementation test report
+
 # Test report — Task 002
 
 ## Exact test commands

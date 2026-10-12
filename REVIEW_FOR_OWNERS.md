@@ -1,5 +1,17 @@
 # Review for owners
 
+## Task003A P0 — owner decision and review handoff (2026-10-12)
+
+- Owner approved continuation on existing `trae/agent-c3dfMx` / PR #3 at 17:16 Asia/Shanghai; base remains `feat/002-metric-validation-diagnostics`. Earlier separate-branch proposals are superseded. No merge/topology authorization.
+- Reviewer prepared instructions only; owner will notify another coding agent. No Task003A feature or test run is claimed by this preparation.
+- Binding scope: world + translation-only zero, unified NPZ/restart, live eye/joint XYZ, manual T 5Hz CSV; Task002C deferred and P1/P2 excluded.
+- No unresolved routine owner decision blocks the specified implementation. GPT reviews implementation/reproduction first; owner verifies physical axes, camera arrangement, W restart and recording afterward.
+- Risk requiring explicit review: physical camera movement cannot be established from index/file equality; present clear operator guidance and refuse known geometry mismatches. Registration residual does not prove eye absolute accuracy.
+- Implementation agent must replace this section's readiness with actual implementation head SHA, PR #3 URL, remaining material risks and any untested hardware paths when requesting review.
+- Canonical coding/reviewer handoff: `docs/handoffs/20261012_TASK003A_HANDOFF.md`.
+
+## Historical owner-review records
+
 Only decisions/risks requiring owner or architecture review. Ordinary
 implementation detail is omitted.
 

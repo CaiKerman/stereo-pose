@@ -1,5 +1,22 @@
 # REVIEW_INBOX.md
 
+## ACTIVE — Task003A P0 owner authorization and coding handoff (2026-10-12)
+
+**Status: HANDOFF READY / OWNER-AUTHORIZED EXISTING BRANCH; implementation pending owner notification.**
+Owner at 17:16 Asia/Shanghai: “直接在当前分支继续开发吧。你弄好交接文档后我通知其他智能体开始开发。”
+
+- Continue Task003A on **existing `trae/agent-c3dfMx` / PR #3**; preserve base `feat/002-metric-validation-diagnostics`, parent PR #2 OPEN/unmerged.
+- Do not create another branch/PR, merge, retarget/close PRs, rebase/force-push or delete branches.
+- Read `CURRENT_TASK.md`, `docs/instructions/003A_WORLD_ALIGNMENT_LIVE_READOUT_CSV.md` and `docs/handoffs/20261012_TASK003A_HANDOFF.md`.
+- Scope: P0 world/relative-origin alignment, complete immutable stereo+world NPZ + explicit activation/restart, accepted/candidate/missing eye/joint XYZ, manual T CSV default OFF at 5Hz.
+- Task002C precision closure is deferred, not solved. P1/P2 excluded. All quality/protocol/privacy gates remain.
+- Architecture checks: proper rigid fit including planar controls; persistent selection not newest-auto takeover; separate world view and original v1.2 joint/statistic projection; record only fresh frames; frozen session calibration; G never deletes recordings.
+- Implement/checkpoint 003A-1/2/3, baseline + full regression, exact test commands/results, synthetic examples only; push into PR #3, stop for GPT review and owner hardware acceptance before any merge.
+
+**History notice:** all older sections below remain audit history. Their old OPEN/pending labels, “no Task003 before Task002C” ordering, and previous new-branch approval proposals do not block this latest P0 assignment. Read the latest disposition within each historical task. Previously outstanding M / picker cancel-rescan hardware checks remain unclaimed and join the eventual owner acceptance.
+
+## Historical review records
+
 ## Task 002 — Review round 1
 
 Status: **OPEN — owner-requested camera selection required before hardware validation**

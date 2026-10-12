@@ -1,3 +1,14 @@
+# Task003A handoff update — 2026-10-12
+
+- **Added:** owner-authorized current-branch startup, architecture pre-review, phased development and acceptance matrix in the handoff.
+- **Modified:** AGENTS.md, CURRENT_TASK.md, Task003A instruction/handoff, REVIEW_INBOX.md, REVIEW_FOR_OWNERS.md and this/test report's preparation notices.
+- **Deleted:** no files; obsolete active new-branch approval wording replaced. Historical reviewer records preserved and labeled as history.
+- **Behavior/numerical/protocol/config changes:** none; documentation only. Task003A is not implemented by this commit.
+- **Git:** owner authorized implementation on existing `trae/agent-c3dfMx` / PR #3; base unchanged. PR #2 remains open/unmerged; no new branch/PR, merge, rebase, force-push or deletion.
+- **Known issues:** absolute accuracy not established; previous hardware checks remain unclaimed. Baseline 214 passes are the prior developer report, not a new run.
+
+## Previous change summaries
+
 # Change summary — Task 002 (metric validation + joint rejection diagnostics)
 
 ## Added

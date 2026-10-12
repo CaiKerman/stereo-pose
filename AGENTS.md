@@ -21,9 +21,18 @@ If two sources conflict, do not silently choose a new convention. Record the con
 - Never implement directly on `main`.
 - Read `CURRENT_TASK.md` and use exactly the task branch declared there.
 - Keep commits small and reviewable.
-- Push work to the task branch and create/update a pull request into `main`.
+- Push work to the exact existing task branch and PR declared in `CURRENT_TASK.md`; use its declared PR base. Target `main` only when that task explicitly declares it.
 - Do not merge your own PR unless the owner explicitly instructs you to do so.
 - Do not force-push shared reviewed history unless explicitly authorized.
+
+### Current owner-approved branch exception (2026-10-12)
+
+Task003A continues on existing `trae/agent-c3dfMx` / PR #3, whose base remains
+`feat/002-metric-validation-diagnostics` (PR #2). The owner explicitly chose
+this workflow. Older separate-branch proposals are superseded. Do not merge,
+retarget, force-push, rebase, delete branches, or create new branch/PR.
+The coding agent starts after the owner's notification; the reviewer prepared
+documentation only.
 
 ## 2.1 Review feedback channel
 
@@ -66,8 +75,8 @@ Known physical constraints:
 - ordinary USB webcams may differ in frame rate, buffering, latency, and exposure timing;
 - stereo calibration must use spatially stable calibration targets;
 - current PoC coordinates are rectified-left-camera coordinates;
-- future world coordinates require ground `Z=0` and `+Z` upward;
-- final world X/Y direction is not yet defined.
+- Task003A full engineering/world registration uses an owner-defined origin and X/Y axes, with physically confirmed `+Z` upward; the chosen ground plane is `Z=0` when a ground frame is requested;
+- translation-only zero/reference mode preserves current axes and must not claim to establish gravity/world-up.
 
 ## 5. Offline-first rule
 
@@ -150,7 +159,7 @@ When implementation is ready:
 1. Ensure working tree is clean except intentional untracked runtime files.
 2. Run tests.
 3. Commit and push the task branch.
-4. Open/update a PR to `main`.
+4. Update the existing PR and preserve the base declared in `CURRENT_TASK.md`. Open a new PR only when the owner/current task explicitly authorizes one.
 5. Put the PR number/URL and head commit SHA into `REVIEW_FOR_OWNERS.md`.
 6. Stop. Do not merge unless instructed.
 

@@ -2,7 +2,7 @@
 
 - **Owner decision:** 2026-10-12. **Tracking:** [Issue #5](https://github.com/CaiKerman/stereo-pose/issues/5).
 - **Priority:** P0 functionality only; precision closure Task002C **deferred, not solved**. Do not claim eye ±5mm or shoulder/elbow ±10mm attained.
-- **Current documentation branch:** `trae/agent-c3dfMx` (existing PR #3). **No coding branch authorized by this instruction**; see section 12. Parent PR #2 and #3 remain unmerged.
+- **Authorized coding branch:** existing `trae/agent-c3dfMx` / PR #3, approved by owner on 2026-10-12 17:16 Asia/Shanghai. Continue here when owner notifies the coding agent; preserve PR base `feat/002-metric-validation-diagnostics`. No new branch/PR; parent PR #2 and #3 remain unmerged.
 - **Authoritative handoff:** `docs/handoffs/20261012_TASK003A_HANDOFF.md`. Start by reading `AGENTS.md`, `CURRENT_TASK.md`, `REVIEW_INBOX.md`, this instruction, and Issue #5.
 
 ## 0. Intent, out-of-scope, priorities
@@ -156,14 +156,33 @@ Submit a reviewable diff with links, exact commit SHA, tests count and example *
 
 Test/checkpoint after each sub-phase; avoid all-in-one changes without intermediate verification.
 
-## 12. Source Git topology & permission gate
+## 12. Owner-authorized existing branch and review gate
 
-As of issue creation:
-- `main` at `d26e64772b8c634851b5812b6015a7ab57124e83`: Task001 only.
-- PR #2 `feat/002-metric-validation-diagnostics` at `ed0421ae595bb2fe19b38ea209b05fba3084ae41` -> `main`: **OPEN**.
-- PR #3 `trae/agent-c3dfMx` at `3a1e97c67499c8f081a9d586fae405f316388718` -> `feat/002-metric-validation-diagnostics`: **OPEN**, 002A+002B code plus reviewer notes, **not merged**.
-- This instruction and handoff are documentation-only additions on existing `trae/agent-c3dfMx`, *not* an authorization to put Task003A implementation into PR #3.
-- Another coding agent must **not** start from stale `main` or rewrite PR topology. Before creating coding branch/PR, propose a non-destructive stacked branch based on the **verified current PR #3 tip** (or coordinate a safe merge sequence) and get owner approval. Do not rebase/force push, delete branches, close/merge PR #2/#3 without explicit permission.
-- General `AGENTS.md` says PR -> `main`; here stacked dependencies make that unsafe until upstream is merged. Owner-specific instructions and explicit review gate override that default.
+**Owner's latest instruction, 2026-10-12 17:16 Asia/Shanghai:**
+“直接在当前分支继续开发吧。你弄好交接文档后我通知其他智能体开始开发。”
 
-**No new coding branch/PR/merge has been authorized or created as part of task publication.**
+This authorizes Task003A implementation on existing `trae/agent-c3dfMx`
+and continued use of existing PR #3. It supersedes the earlier separate
+stacked-branch proposal and the instruction-publication-only branch restriction.
+
+Verified immediately before this documentation update:
+- `main`: `d26e64772b8c634851b5812b6015a7ab57124e83`, Task001 only.
+- PR #2: `feat/002-metric-validation-diagnostics` at `ed0421ae595bb2fe19b38ea209b05fba3084ae41` -> `main`, OPEN/unmerged.
+- PR #3: `trae/agent-c3dfMx` at `d7adf887cba73608c1ea2eecdfef586fa1b20985` -> `feat/002-metric-validation-diagnostics`, OPEN/unmerged.
+- Last code-reviewed implementation is `288860d297ef32a4258b5f5b5f1d632de6a4497c`; the four subsequent commits through `d7adf88` only changed documents.
+
+Coding agent must fetch the CURRENT remote head before starting; the hashes
+above identify preparation history, not permission to discard later work.
+Keep small phase-specific commits and update the same PR #3. Do not start from
+`main`, create another branch/PR, merge, retarget/close old PRs, force-push,
+rebase or delete branches. If a cloud coding environment cannot retain this
+branch, explain that concrete platform constraint to the owner before acting.
+
+Read the active Task003A owner decision in `CURRENT_TASK.md` and
+`REVIEW_INBOX.md`; older Task002/002B restrictions are historical when they
+conflict with this scope. Existing code-quality, compatibility, privacy and
+no-merge gates remain in force.
+
+The reviewer prepares handoff only; another agent implements after the owner's
+notification. Submit code, exact tests and reproduction SHA for GPT review,
+then perform owner hardware acceptance. Stop before merging.
