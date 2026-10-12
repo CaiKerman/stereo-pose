@@ -1,3 +1,27 @@
+# Review for owners — Task003B default midpoint
+
+- Delivery PR: https://github.com/CaiKerman/stereo-pose/pull/6 .
+- Branch: `feat/003b-default-camera-midpoint`; base `trae/agent-c3dfMx`, starting
+  commit `cf408cdd252ae3f277e5d7b6cba48f7b31e7a899`.
+- Tested implementation head: `59b2e90e312244976372fb001da07f138b37fc6f`.
+  Following delivery commit changes reports/status only; code is unchanged.
+- No code blocker found in self-review; 274 methods + 32 subtests and unittest
+  274 pass. Original PR #2/#3 remain unchanged/unmerged. No merge authorized.
+- Material limit: actual gravity is not observed by relative camera geometry.
+  Default +Z assumes level optical centers and upright/level camera mounts.
+  Confirm this installation or use existing W with measured horizontal controls
+  for actual world-up. The default origin is at optical-center height, not floor.
+- Owner acceptance: update code keeping local config/runtime/model, run RUN_ME,
+  expect DEFAULT: CAMERA MIDPOINT before W. Verify +X on forward movement, +Y
+  toward LEFT, +Z on upward movement and Y near zero on rig midline; test T CSV,
+  saved W priority/cancel/restart and optional zero. Parent XYZ usability was
+  reported by the owner, but new physical signs remain untested here.
+- If camera order/mounting is incompatible with forward/Y/up or known capture
+  size mismatches the NPZ, default is refused with a visible reason. Camera
+  indexes/hashes cannot prove mounts unchanged. Absolute accuracy remains open.
+
+## Historical Task003A owner record
+
 # Review for owners — Task003A P0 delivery
 
 - Latest owner instruction at 2026-10-12 19:30 Asia/Shanghai authorized GPT to finish if the other coding agent had not delivered. GitHub still had only handoff commit `389042e` at takeover; no remote implementation/new branch/PR was found. Unpublished work in another agent's environment is not observable.

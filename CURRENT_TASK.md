@@ -1,5 +1,20 @@
 # CURRENT_TASK
 
+## Task003B — default camera midpoint coordinates
+
+- Latest owner instruction: 2026-10-12 21:15 Asia/Shanghai, create a new branch and implement optical-center midpoint zero, +Y right->left, +X forward, +Z up.
+- Branch: `feat/003b-default-camera-midpoint`, starting from exact delivered parent `cf408cdd252ae3f277e5d7b6cba48f7b31e7a899`.
+- New PR base: `trae/agent-c3dfMx`; existing PR #2/#3 remain unchanged/unmerged. No merge/retarget/rebase/force-push/deletion.
+- Instruction: `docs/instructions/003B_DEFAULT_CAMERA_MIDPOINT.md`.
+- Delivery: https://github.com/CaiKerman/stereo-pose/pull/6 ; implementation `59b2e90e312244976372fb001da07f138b37fc6f`, following reports-only commit.
+- Status: IMPLEMENTED / FULL DETERMINISTIC REGRESSION PASSED (274 methods + 32 subtests; unittest 274 OK). Owner Windows/physical sign acceptance pending; no merge authorized.
+- Scope: derived default live/CSV frame, saved W precedence, cancel/restart/zero/C-R behavior, numerical regression and operator docs. No dependencies/config keys, legacy v1.2 changes, precision closure or P1/P2.
+- Physical assumption: level optical centers, upright/level cameras. Stereo-only parameters do not observe gravity; W establishes verified world-up when needed.
+- Parent hardware evidence: owner downloaded `stereo-pose-trae-agent-c3dfMx`, ran RUN_ME and confirmed XYZ visible/usable. Parent full marker/recording acceptance not asserted.
+- New change status and exact verification: see latest `TEST_REPORT.md`; owner Windows/physical sign verification pending.
+
+## Previous Task003A delivery and history (branch-specific restrictions superseded for Task003B)
+
 ## Task003A P0 — implemented; owner hardware acceptance pending
 
 - **Latest instruction (2026-10-12 19:30 Asia/Shanghai):** owner asked GPT to check the other agent's delivery and finish this development if incomplete.

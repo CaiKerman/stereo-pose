@@ -25,7 +25,17 @@ If two sources conflict, do not silently choose a new convention. Record the con
 - Do not merge your own PR unless the owner explicitly instructs you to do so.
 - Do not force-push shared reviewed history unless explicitly authorized.
 
-### Current owner-approved branch exception (2026-10-12)
+### Current owner-approved branch exception (2026-10-12 21:15)
+
+Task003B uses new `feat/003b-default-camera-midpoint`, starting exactly from
+`cf408cdd252ae3f277e5d7b6cba48f7b31e7a899` of `trae/agent-c3dfMx`.
+The owner explicitly requested a separate branch for the default camera-midpoint
+coordinate feature. A new PR targets `trae/agent-c3dfMx`; original PR #2/#3
+remain unchanged. This supersedes the earlier no-new-branch rule for Task003B.
+Read `docs/instructions/003B_DEFAULT_CAMERA_MIDPOINT.md`; no merge/retarget,
+force-push, rebase or branch deletion is authorized.
+
+### Historical Task003A branch exception (2026-10-12)
 
 Task003A continues on existing `trae/agent-c3dfMx` / PR #3, whose base remains
 `feat/002-metric-validation-diagnostics` (PR #2). The owner explicitly chose
@@ -75,7 +85,10 @@ Known physical constraints:
 
 - ordinary USB webcams may differ in frame rate, buffering, latency, and exposure timing;
 - stereo calibration must use spatially stable calibration targets;
-- current PoC coordinates are rectified-left-camera coordinates;
+- legacy protocol coordinates are rectified-left-camera coordinates;
+- Task003B default live/CSV coordinates use the optical-center midpoint,
+  +X forward, +Y right-to-left, +Z upward assuming a level/upright rig. Relative
+  stereo geometry alone cannot establish absolute gravity; label this assumption;
 - Task003A full engineering/world registration uses an owner-defined origin and X/Y axes, with physically confirmed `+Z` upward; the chosen ground plane is `Z=0` when a ground frame is requested;
 - translation-only zero/reference mode preserves current axes and must not claim to establish gravity/world-up.
 

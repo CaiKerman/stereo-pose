@@ -1,5 +1,24 @@
 # REVIEW_INBOX.md
 
+## ACTIVE — Task003B default camera midpoint
+
+Delivered PR: https://github.com/CaiKerman/stereo-pose/pull/6 .
+Implementation head: `59b2e90e312244976372fb001da07f138b37fc6f`;
+full pytest 274 methods + 32 subtests / unittest 274 OK. Subsequent reports-only
+delivery commit does not change tested code.
+
+Owner at 2026-10-12 21:15 explicitly requested a new branch from delivered
+`trae/agent-c3dfMx`; use `feat/003b-default-camera-midpoint`, base PR to that
+parent. Earlier no-new-branch restrictions apply to Task003A history only.
+Implemented default live/CSV midpoint frame with exact baseline axis and
+camera-level/up assumption. Saved W takes priority, zero preserves default
+axes/assumption, stereo solve derives a new default. Original v1.2 fields and
+quality gates unchanged. See CURRENT_TASK and Task003B instruction/test report.
+No outstanding code blocker identified; Windows/physical direction and W/CSV
+acceptance remain with the owner. Do not merge any PR.
+
+## Previous Task003A record
+
 ## ACTIVE — Task003A P0 delivered / owner hardware acceptance pending
 
 Latest owner authorized GPT takeover at 2026-10-12 19:30; no new remote implementation had been delivered by the other coding agent.

@@ -1,3 +1,76 @@
+# Task003B verification — 2026-10-12
+
+Tested implementation head: `59b2e90e312244976372fb001da07f138b37fc6f`.
+PR: https://github.com/CaiKerman/stereo-pose/pull/6 ; following commit contains
+verification/governance/report documentation only, no code/test changes.
+
+Tested exact local source snapshot for `feat/003b-default-camera-midpoint`,
+derived from remote `cf408cdd252ae3f277e5d7b6cba48f7b31e7a899`.
+All 131 parent files were matched against the remote Git blob identities before
+edits (3 differing/missing local documentation fixtures restored from GitHub).
+
+## Environment and reproduction
+
+Linux, CPython 3.12.14, NumPy 2.3.5, OpenCV 5.0.0 (headless), pytest 9.1.1.
+No installed torch/YOLO/camera/window dependency needed for deterministic tests.
+Use the already working Python environment; no dependency downloads/changes.
+The verification interpreter was an existing isolated environment:
+`/workspace/scratch/d466de06fca2/stereo-test-env/bin/python`.
+The task working directory was `/workspace/scratch/5f3b60f3eba2/stereo-pose`.
+
+Exact completed commands from repository root:
+
+```bash
+/workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q tests/unit/test_camera_midpoint.py tests/integration/test_task003_runtime.py tests/unit/test_live_world.py
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q --junitxml=/workspace/scratch/5f3b60f3eba2/task003b-pytest.xml
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m unittest discover -s tests -t . -q > /workspace/scratch/5f3b60f3eba2/task003b-unittest.log 2>&1
+git diff --check
+```
+
+- Parent baseline: **261 methods + 26 subtests passed**, 0 failed/skipped (27.88s).
+- Focused midpoint/live/W suite at that checkpoint: **31 methods + 10 subtests
+  passed**, 0 failed/skipped (6.22s). One further W override lifecycle method
+  was then added and exercised by the complete run below.
+- Final pytest: **274 methods + 32 subtests passed**, 0 failed/skipped (56.12s).
+  JUnit counts include subtests, not 306 unique methods.
+- Final unittest: **274 tests, OK**, 0 failures/skips (37.530s).
+- Local source and test __file__ paths were verified to resolve to this task's
+  checkout. All fixtures are synthetic. `git diff --check` clean.
+
+For another machine, use `python -m pytest -q` and
+`python -m unittest discover -s tests -t . -q` in the project root with its
+working dependencies. Tests bootstrap local src without installing the package.
+
+## Behavior verified
+
+- Optical centers at +/-baseline/2 on Y, true midpoint zero, +X forward, +Y
+  right->left, +Z camera-up, proper rotation, inverse and mm preservation.
+- Actual cv2.stereoRectify on a 420mm, 12-degree-per-camera toe-in rig;
+  transformed metric points follow the physical rig axes (not raw T/2).
+- Projection-only legacy NPZ, no default write to source NPZ, saved W priority,
+  invalid W warnings/default fallback, size mismatch and ambiguous rig refusal.
+- One shared inference loop; live and CSV accepted/raw/filtered/candidate
+  coordinates consistent; candidate/missing separation and original v1.2 C intact.
+- W cancellation/restart/default preservation, confirmed W immediate override,
+  zero keeps default axes/up assumption through saved NPZ restart; new stereo
+  solve clears old W and recomputes midpoint from the new baseline.
+- Existing cleanup, camera picker, snapshots, menus, quality/filtering, explicit
+  NPZ selection and manual recorder regression suite remains passing.
+- Added failures found during focused development (OpenCV test T shape and
+  optional metadata test fixture) were corrected before the passing final run.
+
+## Not certified
+
+Real Windows windows/webcams, YOLO/CUDA, true exposure synchronization, gravity,
+camera mounting and absolute eye/joint accuracy. Default up assumes a level,
+upright rig; common pitch/roll is unobservable from stereo-only geometry.
+Owner already confirmed parent XYZ usable, not this new branch's sign/axis test.
+No merge performed; precision closure and P1/P2 remain deferred.
+
+## Historical test reports (prior tasks and checkpoints)
+
+
 # Task003A P0 implementation verification — 2026-10-12
 
 Implementation head: `08da0e6ef0e10711bc1c341302bdec3b5daac312`. Existing branch `trae/agent-c3dfMx`, PR #3 -> `feat/002-metric-validation-diagnostics`. No merge/topology change.
