@@ -1,4 +1,28 @@
-## Task003A P0 delivery (2026-10-12)
+## Task003B default camera midpoint (2026-10-12)
+
+Startup readiness rechecked 2026-10-13: configured model path is honored;
+UTF-8 BOM configs load/save; moved explicit calibration selection is recovered
+only from an identical stored SHA-256 in the managed calibration directory;
+startup exceptions release opened cameras/publishers, and headless OpenCV is
+diagnosed before the picker. See the latest TEST_REPORT.md and Chinese guide.
+For the quickest update, replace code in the working project folder, retaining
+local config.json, runtime/ and the configured model. GitHub ZIP excludes those
+private/local assets. Use the same working Python environment and RUN_ME.bat.
+
+On `feat/003b-default-camera-midpoint`, live eye/joint XYZ and CSV default to
+`camera_midpoint` whenever a valid stereo artifact exists without a valid saved
+W/zero registration. Optical-center midpoint = (0,0,0); +X forward/away from
+cameras, +Y right camera -> left camera, +Z up **assuming level, upright cameras**.
+The UI states `DEFAULT: CAMERA MIDPOINT` and the mounting assumption. Stereo
+geometry cannot measure absolute gravity; use W for a physically aligned frame.
+Valid saved W takes priority. Restart recomputes the default, cancelled W retains
+it, zero-only preserves its axes/assumption and new C/R stereo solve derives a
+new default. Original NPZ and legacy v1.2 camera fields are preserved.
+See [Task003B contract](docs/instructions/003B_DEFAULT_CAMERA_MIDPOINT.md) and
+[TEST_REPORT.md](TEST_REPORT.md). New PR targets `trae/agent-c3dfMx`;
+original PR #2/#3 remain unchanged and unmerged.
+
+## Parent Task003A P0 delivery (2026-10-12)
 
 World/relative-origin alignment, immutable stereo+world NPZ with exact activation/restart, live eye/selected-joint XYZ and manual T CSV at nominal 5Hz are implemented on the existing `trae/agent-c3dfMx` / PR #3.
 No merges or PR-base changes. Preserve local config/runtime/model when updating code; old config merges new defaults.
@@ -159,15 +183,11 @@ All deterministic tests run without webcams, CUDA, or model weights.
 
 ## Important coordinate convention
 
-The current proof-of-concept outputs coordinates in the **rectified-left-camera**
-coordinate system.
-
-The future world coordinate system will require:
-
-- ground plane = `Z = 0`;
-- `+Z` = upward;
-- origin and X/Y direction = user calibrated;
-- no X/Y convention may be invented without an explicit project decision.
+Legacy JSONL/UDP v1.2 outputs **rectified-left-camera** coordinates.
+Live readout/CSV uses valid saved W/relative registration, otherwise the default
+camera-midpoint frame described above. A midpoint origin lies at optical-center
+height, so the floor is generally at negative Z. W can instead define a true
+ground frame (`Z=0` on ground, physically confirmed +Z up, owner-defined X/Y).
 
 ## Documentation
 

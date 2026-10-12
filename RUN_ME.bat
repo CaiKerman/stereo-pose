@@ -4,7 +4,7 @@ cd /d "%~dp0"
 title Stereo Pose - RUN ME
 
 echo ================================================================
-echo Stereo Pose Task003A - world XYZ and manual 5 Hz CSV
+echo Stereo Pose Task003B - camera midpoint XYZ and manual 5 Hz CSV
 echo This test does NOT pip-install the project.
 echo.
 echo A camera selection window opens FIRST: pick your two USB

@@ -8,6 +8,7 @@ modules together while preserving the v1.2 runtime behavior and the
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import time
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from stereo_pose.capture.camera import open_camera, read_stereo_pair
 from stereo_pose.config import load_config
 from stereo_pose.app.measurements import measure_frame, make_readout, append_readout
 from stereo_pose.app.world_setup import run_world_setup
-from stereo_pose.calibration.package import load_registration, activate_calibration, file_sha256, read_bundle, validate_stereo_bundle
+from stereo_pose.calibration.package import load_readout_registration, activate_calibration, file_sha256, read_bundle, validate_stereo_bundle
 from stereo_pose.filtering import JointSmoother
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, resolve_joints
@@ -211,7 +212,21 @@ def _run_metric_validation(triangulator, frame_l, frame_r, stereo_cfg, runtime_r
     return saved
 
 
+def _close_windows():
+    try:
+        cv2.destroyAllWindows()
+    except cv2.error:
+        pass
+
+
 def run(args, cfg):
+    # Own resources before setup can fail, not only after the live loop starts.
+    # ExitStack runs every remaining callback even if one close operation fails.
+    with ExitStack() as resources:
+        return _run(args, cfg, resources)
+
+
+def _run(args, cfg, resources):
     c = cfg["camera"]
     p = cfg["pose"]
     s = cfg["stereo"]
@@ -271,10 +286,14 @@ def run(args, cfg):
 
     fourcc = c.get("fourcc", "MJPG")
     buffer_size = c.get("buffer_size", 1)
+    resources.callback(_close_windows)
     left = open_camera(c["left"], c["width"], c["height"], c["fps"], c["backend"], fourcc=fourcc, buffer_size=buffer_size)
+    resources.callback(left.release)
     right = open_camera(c["right"], c["width"], c["height"], c["fps"], c["backend"], fourcc=fourcc, buffer_size=buffer_size)
+    resources.callback(right.release)
     estimator = PoseEstimator(p["model"], device, p["detection_confidence"])
     publisher = build_publisher(o)
+    resources.callback(publisher.close)
     calibrator = RuntimeCalibration(s, cr)
 
     active_size = _capture_image_size(left, right, (c["width"], c["height"]))
@@ -294,10 +313,13 @@ def run(args, cfg):
         )
 
     if calib_path is not None:
-        registration, world_warnings = load_registration(calib_path, active_size)
+        registration, world_warnings = load_readout_registration(calib_path, active_size)
         for warning in world_warnings: print("[world]", warning)
         if registration is not None:
-            print("[world] RESTORED", registration["name"], "| confirm physical cameras/mounting unchanged; file/index cannot prove this")
+            if registration['metadata'].get('mode') == 'camera_midpoint':
+                print("[coordinates] DEFAULT camera_midpoint: optical-center midpoint=0; +X forward, +Y right->left, +Z assumed up (level/upright cameras; W=physical alignment)")
+            else:
+                print("[world] RESTORED", registration["name"], "| confirm physical cameras/mounting unchanged; file/index cannot prove this")
 
     smoother = JointSmoother(
         enabled=scfg.get("enabled", True),
@@ -396,9 +418,9 @@ def run(args, cfg):
                             result = calibrator.solve()
                             triangulator = StereoTriangulator(result["path"])
                             calib_path = result["path"]
-                            registration = None
+                            registration, world_warnings = load_readout_registration(calib_path, active_size)
                             active_artifact_sha = file_sha256(calib_path)
-                            world_warnings = ["WORLD unavailable after new stereo solve; press W to re-register"]
+                            print("[coordinates] prior world cleared after stereo solve; default camera midpoint active when available; W=re-register world")
                             try:
                                 s.update(activate_calibration(args.config, calib_path))
                             except Exception as selection_error:
@@ -558,7 +580,7 @@ def run(args, cfg):
                             active_artifact_sha = file_sha256(new_path)
                             triangulator = StereoTriangulator(new_path)
                             s.update(load_config(args.config)["stereo"])
-                            registration, world_warnings = load_registration(new_path, active_size)
+                            registration, world_warnings = load_readout_registration(new_path, active_size)
                     except Exception as e:
                         print("[world] setup failed; previous active retained:", e)
             elif key in (ord("t"), ord("T")):
@@ -647,10 +669,6 @@ def run(args, cfg):
 
     finally:
         recorder.stop("app_exit")
-        publisher.close()
-        left.release()
-        right.release()
-        cv2.destroyAllWindows()
 
 
 def should_pick_cameras(args) -> bool:

@@ -112,6 +112,12 @@ def _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,
                     'reference_points':refs,'camera_controls_mm':C.tolist(),'capture_image_size':list(size),
                     'parent_coordinate_name':None if registration is None else registration['name'],
                     'axes':'preserved axes; no new gravity claim' if zero else 'owner-defined X/Y; +Z physically confirmed'}}
+                if zero and registration is not None:
+                    # Origin-only alignment must retain the default frame's
+                    # installation assumption; it cannot establish world-up.
+                    for field in ('up_reference', 'mount_assumption'):
+                        if field in registration.get('metadata', {}):
+                            candidate['metadata'][field] = registration['metadata'][field]
                 error='Review axes/residuals. U confirms world-up; ENTER saves+activates.'
                 print('[world] fit:',report)
             except Exception as e: candidate=None;error=str(e);print('[world] fit failed:',e)

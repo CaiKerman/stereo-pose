@@ -77,7 +77,33 @@ def load_registration(path, actual_size=None):
         if m.get('mode') != 'zero' and m.get('up_confirmed') is not True: raise ValueError('world-up not confirmed')
         return {'transform':t,'name':name,'metadata':m}, []
     except (ValueError, KeyError, TypeError) as e:
-        return None, [f'WORLD INVALID: {e}; CAMERA FRAME only; re-register W']
+        return None, [f'WORLD INVALID: {e}; re-register W']
+
+
+def load_readout_registration(path, actual_size=None):
+    """Prefer a valid owner W/zero; otherwise derive the default camera midpoint.
+
+    Default geometry is never saved as a physically confirmed world fit. It is
+    recomputed from the selected stereo artifact on restart and on stereo solve.
+    Invalid saved W remains visibly invalid even when the default is available.
+    """
+    registration, warnings = load_registration(path, actual_size)
+    if registration is not None:
+        return registration, warnings
+    try:
+        from stereo_pose.coordinates.camera_midpoint import camera_midpoint_registration
+        b = read_bundle(path)
+        validate_stereo_bundle(b)
+        if actual_size is not None and 'image_size' in b:
+            if tuple(np.asarray(b['image_size']).reshape(-1)) != tuple(actual_size):
+                raise ValueError('capture resolution differs from stereo calibration; recalibrate C -> R')
+        registration = camera_midpoint_registration(b)
+        registration['metadata']['stereo_fingerprint'] = stereo_fingerprint(b)
+        if actual_size is not None and 'image_size' not in b:
+            warnings.append('DEFAULT FRAME: legacy calibration resolution unverified; confirm capture size unchanged')
+        return registration, warnings
+    except (ValueError, KeyError, TypeError, OSError) as e:
+        return None, warnings + [f'DEFAULT FRAME UNAVAILABLE: {e}; CAMERA FRAME only']
 
 
 def atomic_json(path, data):
@@ -135,7 +161,7 @@ def save_registered(source, registration, calibration_dir, runtime_root):
 def activate_calibration(config_path, path):
     """Persist exact NPZ + SHA without discarding unrelated user settings."""
     p=Path(config_path)
-    data=json.loads(p.read_text(encoding='utf-8')) if p.exists() else {}
+    data=json.loads(p.read_text(encoding='utf-8-sig')) if p.exists() else {}
     if not isinstance(data,dict) or not isinstance(data.get('stereo',{}),dict): raise ValueError('config must contain object stereo')
     read_bundle(path)
     stereo=dict(data.get('stereo',{}))
@@ -143,3 +169,55 @@ def activate_calibration(config_path, path):
     data['stereo']=stereo
     atomic_json(p,data)
     return stereo
+
+
+def restore_moved_calibration(config_path, cfg):
+    """Recover a moved explicit selection only by the stored complete-file SHA.
+
+    Never pick newer geometry or trust a coincident filename. Search only the
+    configured managed calibration directory; archives are not changed. Atomically
+    update the selection after validating the exact archive, preserving settings.
+    RUN_ME calls this before its camera picker and before startup cleanup.
+    """
+    stereo = cfg['stereo']
+    if stereo.get('load') != 'explicit':
+        return None
+    selected = stereo.get('explicit_file')
+    if not selected:
+        raise ValueError('stereo.load=explicit requires a selected NPZ path')
+    root = Path(config_path).resolve().parent
+    path = Path(selected)
+    if not path.is_absolute():
+        path = root / path
+    expected = stereo.get('active_sha256')
+    if expected is not None and (not isinstance(expected, str) or len(expected) != 64 or
+                                any(ch not in '0123456789abcdef' for ch in expected)):
+        raise ValueError('invalid selected calibration SHA-256; reselect the known NPZ')
+    if path.is_file():
+        if expected and file_sha256(path) != expected:
+            raise ValueError('selected calibration SHA-256 mismatch; changed NPZ will not be substituted')
+        return path
+    if not expected:
+        raise FileNotFoundError(f'Selected calibration missing: {path}; restore the original NPZ (no recorded SHA for safe relocation)')
+    def anchored(value):
+        p = Path(value)
+        return p if p.is_absolute() else root / p
+    cal_dir = ensure_managed_location(anchored(stereo['calibration_dir']),
+        anchored(cfg['runtime']['root']), 'calibration relocation search')
+    candidates = sorted(cal_dir.rglob('*.npz'), key=lambda p: (p.name != path.name, str(p)))
+    for candidate in candidates:
+        # Do not follow an archive symlink outside the configured managed root.
+        if not candidate.resolve().is_relative_to(cal_dir):
+            continue
+        try:
+            matches = candidate.is_file() and file_sha256(candidate) == expected
+        except OSError:
+            continue
+        if matches:
+            validate_stereo_bundle(read_bundle(candidate))
+            # A preference write failure must report the actual error rather
+            # than pretending the matching archive was missing.
+            stereo.update(activate_calibration(config_path, candidate))
+            print(f'[setup] RESTORED exact moved calibration: {path} -> {candidate} (SHA-256 unchanged)')
+            return candidate
+    raise FileNotFoundError(f'Selected calibration missing: {path}; copy its unchanged runtime/calibrations folder into this project. No identical SHA-256 archive found; no latest-file fallback.')

@@ -1,3 +1,67 @@
+# Task003B — default camera midpoint (2026-10-12)
+
+## 2026-10-13 startup readiness follow-up
+
+- Added: exact complete-file SHA recovery for a moved explicit NPZ inside the
+  configured managed calibration directory, before picker/cleanup; no filename
+  or latest-artifact substitution. 11 new startup tests + 3 subtest cases.
+- Modified: RUN_ME honors configured model path, reports selected interpreter
+  and headless OpenCV, restores sys.argv; config/camera-choice/activation accept
+  UTF-8 BOM; ExitStack releases acquired camera/publisher/window resources when
+  initialization or the main loop fails. Snapshot purity test inspects the same
+  live handler in its new _run core, preserving all assertions.
+- Deleted: no files; obsolete hardcoded default-weight check and late-only
+  resource ownership removed.
+- Behavior: existing working folder is the recommended update path; a fresh
+  folder still needs local config, runtime and configured model. A missing/hash-
+  mismatched explicit selection fails visibly rather than changing geometry.
+- Numerical/protocol/config: no coordinate math, quality, dependency, schema or
+  new config-key change. Existing settings/source archives remain intact.
+- Verification: 285 methods + 35 subtests pass; unittest 285 OK. Same branch/PR
+  #6, tested code `3d977f45f65f77f75eac29351724ceb124d717e8`. Physical Windows
+  camera/model/GPU paths untested here; earlier user's parent run worked.
+
+## Original midpoint change summary
+
+## Added
+- Derived proper no-scale default optical-center midpoint frame: +X forward,
+  +Y right->left, +Z assumed up for a level/upright rig.
+- Projection-center and toe-in rig tests, live/CSV consistency, W override,
+  cancel/restart, zero-axis provenance and new stereo default recomputation.
+- 13 new test methods and 6 subtest cases; Task003B instruction and operator docs.
+
+## Modified
+- Registration loading prefers valid owner W/zero then derives default; runtime
+  startup and stereo solve use it. UI labels DEFAULT and gravity assumption.
+- Default/zero metadata freezes coordinate provenance in CSV/session and saved
+  zero NPZ; a full W fit supersedes assumed axes.
+- Current branch/review documents follow latest owner-authorized new branch.
+
+## Deleted
+No files, hotkeys, quality gates or existing output fields.
+
+## Behavior and numerical changes
+- Default live/CSV XYZ is translated to optical midpoint and rotated to requested
+  rig axes. Legacy v1.2 raw/filtered C and all triangulation/filtering/gates stay
+  unchanged. No scale correction, fabricated missing coordinates or second YOLO.
+- Old stereo NPZ/configs remain intact; default recomputes on restart/C-R,
+  requires no markers, no extra dependency and no new config key.
+
+## Protocol/config changes
+CSV columns/schema unchanged. W fields can now contain the explicitly named
+`camera_midpoint` frame; session definition carries origin/baseline/axes/R/t,
+stereo fingerprint, up_reference and unconfirmed gravity. Existing saved W/zero
+is preferred. Ground is not automatically Z=0 in the default frame.
+
+## Verification and known issues
+274 pytest methods + 32 subtests passed; unittest 274 OK. Exact commands/platform
+in TEST_REPORT.md. Relative geometry cannot measure absolute gravity; level,
+upright installation is an explicit default assumption, W establishes world-up.
+Owner Windows camera sign verification remains pending. Precision and P1/P2
+deferred. New branch bases on `cf408cdd`; original PR #2/#3 untouched/unmerged.
+
+## Historical Task003A summary
+
 # Task003A P0 — implementation complete (2026-10-12)
 
 ## Added

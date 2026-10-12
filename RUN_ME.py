@@ -53,7 +53,12 @@ def check_dependencies() -> None:
         ("ultralytics", "Ultralytics"),
     ]:
         try:
-            importlib.import_module(module_name)
+            module = importlib.import_module(module_name)
+            if module_name == 'cv2':
+                gui = next((line.split(':', 1)[1].strip() for line in module.getBuildInformation().splitlines()
+                            if line.strip().startswith('GUI:')), '')
+                if gui.upper() in ('NONE', 'NO'):
+                    missing.append('OpenCV GUI is unavailable (headless build); use the GUI-enabled Python environment that ran your previous version.')
         except Exception as exc:
             missing.append(f"{label} ({module_name}): {exc}")
 
@@ -65,21 +70,24 @@ def check_dependencies() -> None:
 
 
 def main() -> None:
+    print(f'[setup] Python: {sys.executable}')
     check_dependencies()
     cfg_path = ensure_config()
-
-    model = ROOT / "yolo11n-pose.pt"
-    if not model.exists():
-        stop(
-            "yolo11n-pose.pt is missing.",
-            "Copy the same yolo11n-pose.pt you used before into this folder, next to RUN_ME.py.",
-        )
 
     try:
         from stereo_pose.config import load_config
         from stereo_pose.diagnostics.doctor import render_doctor, run_doctor
 
         cfg = load_config(cfg_path)
+        model = Path(cfg['pose']['model'])
+        if not model.is_absolute():
+            model = ROOT / model
+        if not model.is_file():
+            stop('The configured local pose weight file is missing.',
+                 f'pose.model={cfg["pose"]["model"]}\nExpected file: {model}\n'
+                 'Keep the model from your working version at this path, or update pose.model in config.json.')
+        from stereo_pose.calibration.package import restore_moved_calibration
+        restore_moved_calibration(cfg_path, cfg)
 
         # Task 002A: visually identify all camera feeds and pick LEFT/RIGHT
         # before the stereo tracking loop opens its two cameras. The choice is
@@ -123,8 +131,12 @@ def main() -> None:
 
         from stereo_pose.app.runner import main as run_main
 
+        old_argv = sys.argv
         sys.argv = ["stereo_pose run", "--config", str(cfg_path)]
-        run_main()
+        try:
+            run_main()
+        finally:
+            sys.argv = old_argv
     except SystemExit:
         raise
     except Exception:

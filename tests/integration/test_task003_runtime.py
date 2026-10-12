@@ -11,7 +11,7 @@ import numpy as np
 from stereo_pose.config import ConfigError, load_config, validate_config
 from stereo_pose.app.runner import run
 from stereo_pose.geometry import StereoTriangulator
-from stereo_pose.calibration.package import activate_calibration, save_registered
+from stereo_pose.calibration.package import activate_calibration, save_registered, read_bundle
 from stereo_pose.coordinates.rigid import RigidTransform
 from tests.unit.test_world_alignment import synthetic_calibration
 
@@ -32,7 +32,12 @@ class TestTrackingLifecycle(unittest.TestCase):
             q=np.c_[xyz,np.ones(17)]@P.T;return q[:,:2]/q[:,2:]
         self.L=proj(self.tri.P1);self.R=proj(self.tri.P2);self.image=np.zeros((720,1280,3),np.uint8)
 
-    def execute(self, keys, calibration_solve=None):
+    def execute(self, keys, calibration_solve=None, world_result=None):
+        from stereo_pose.app.measurements import append_readout
+        self.readout_registrations = []
+        def draw_readout(canvas, rows, registration, *args, **kwargs):
+            self.readout_registrations.append(registration)
+            return append_readout(canvas, rows, registration, *args, **kwargs)
         estimator=Mock();results=[Mock(),Mock()]
         for result in results:result.plot.return_value=self.image.copy()
         estimator.infer_pair.return_value=results
@@ -61,7 +66,8 @@ class TestTrackingLifecycle(unittest.TestCase):
             from stereo_pose.outputs.csv_recorder import CsvRecorder
             stack.enter_context(patch('stereo_pose.app.runner.CsvRecorder',side_effect=lambda *a,**k:CsvRecorder(*a,**k,clock=lambda:clock['t'])))
             stack.enter_context(patch('cv2.imshow'));stack.enter_context(patch('cv2.waitKey',side_effect=keys));stack.enter_context(patch('cv2.destroyAllWindows'))
-            wizard=stack.enter_context(patch('stereo_pose.app.runner.run_world_setup',return_value=None))
+            wizard=stack.enter_context(patch('stereo_pose.app.runner.run_world_setup',return_value=world_result))
+            stack.enter_context(patch('stereo_pose.app.runner.append_readout',side_effect=draw_readout))
             run(self.args,self.cfg)
         self.assertEqual(read.call_count,len(keys));self.assertEqual(estimator.infer_pair.call_count,len(keys)-(1 if calibration_solve is not None else 0))
         self.assertEqual(camera.release.call_count,2);publisher.close.assert_called_once()
@@ -83,6 +89,60 @@ class TestTrackingLifecycle(unittest.TestCase):
         self.assertEqual(len(meta['calibration_sha256']),64)
         self.assertIn('reset_after_s',meta['filtering']);self.assertEqual(meta['device'],'cpu')
         self.assertEqual(meta['actual_image_size_right'],[1280,720])
+
+    def test_default_readout_and_csv_share_midpoint_frame(self):
+        pub,_=self.execute([ord('t'),0,ord('q')])
+        registration=self.readout_registrations[-1]
+        self.assertEqual(registration['metadata']['mode'],'camera_midpoint')
+        session=next((self.root/'recordings').glob('session_*'))
+        meta=json.loads((session/'session.json').read_text())
+        self.assertEqual(meta['coordinate_frame'],'camera_midpoint')
+        self.assertFalse(meta['world']['definition']['up_confirmed'])
+        np.testing.assert_allclose(meta['world']['R_wc'],registration['transform'].R)
+        np.testing.assert_allclose(meta['world']['t_wc_mm'],registration['transform'].t)
+        with (session/'joints.csv').open(encoding='utf-8-sig',newline='') as f:
+            row=next(csv.DictReader(f))
+        self.assertEqual(row['coordinate_frame'],'camera_midpoint')
+        self.assertEqual(row['joint'],'left_eye')
+        camera=[float(row['camera_filtered_mm_'+axis]) for axis in ('x','y','z')]
+        world=[float(row['world_filtered_mm_'+axis]) for axis in ('x','y','z')]
+        np.testing.assert_allclose(world,[camera[2],150-camera[0],-camera[1]],atol=1e-8)
+        self.assertEqual(pub.publish.call_args.args[0]['coordinate_system'],'rectified_left_camera')
+
+    def test_cancelled_W_keeps_default_and_restart_recomputes_it(self):
+        before=self.cal.read_bytes()
+        _,wizard=self.execute([ord('w'),ord('q')])
+        self.assertEqual(wizard.call_args.kwargs['registration']['metadata']['mode'],'camera_midpoint')
+        first=self.readout_registrations[0]['transform'].as_matrix()
+        np.testing.assert_allclose(self.readout_registrations[-1]['transform'].as_matrix(),first)
+        self.execute([ord('q')])
+        np.testing.assert_allclose(self.readout_registrations[0]['transform'].as_matrix(),first)
+        self.assertEqual(self.cal.read_bytes(),before)
+
+    def test_new_stereo_recomputes_default_instead_of_carrying_world(self):
+        self.world_source()
+        new=synthetic_calibration(self.root/'new_stereo.npz')
+        bundle=read_bundle(new);bundle['P2'][0,3]=-900*500;bundle['T'][0]=-500
+        np.savez(new,**bundle)
+        self.execute([ord('c'),ord('r'),ord('t'),0,ord('q')],calibration_solve=new)
+        registration=self.readout_registrations[-1]
+        self.assertEqual(registration['metadata']['mode'],'camera_midpoint')
+        self.assertAlmostEqual(registration['metadata']['baseline_mm'],500)
+        np.testing.assert_allclose(registration['transform'].apply([250,0,0]),[0,0,0])
+        meta=json.loads(next((self.root/'recordings').glob('session_*/session.json')).read_text())
+        self.assertEqual(meta['coordinate_frame'],'camera_midpoint')
+        self.assertEqual(meta['calibration_file'],str(new))
+
+    def test_successful_W_replaces_default_for_live_readout_and_recording(self):
+        saved=save_registered(self.cal,{'name':'ALIGNED WORLD',
+            'transform':RigidTransform(np.eye(3),[10,20,30]),
+            'metadata':{'mode':'world','up_confirmed':True}},self.root/'cal',self.root)
+        self.execute([ord('w'),ord('t'),0,ord('q')],world_result=saved)
+        self.assertEqual(self.readout_registrations[0]['metadata']['mode'],'camera_midpoint')
+        self.assertEqual(self.readout_registrations[-1]['name'],'ALIGNED WORLD')
+        meta=json.loads(next((self.root/'recordings').glob('session_*/session.json')).read_text())
+        self.assertEqual(meta['coordinate_frame'],'ALIGNED WORLD')
+        self.assertEqual(meta['calibration_file'],str(saved))
 
     def test_world_setup_segments_recording_even_when_cancelled(self):
         _,wizard=self.execute([ord('t'),0,ord('w'),ord('q')])
