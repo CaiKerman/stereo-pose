@@ -81,6 +81,8 @@ class TestTrackingLifecycle(unittest.TestCase):
         self.assertEqual(meta['stop_reason'],'manual');self.assertEqual(meta['samples_completed'],3)
         self.assertIn('left_eye',meta['selected_joints']);self.assertIn('eye_midpoint',meta['selected_joints'])
         self.assertEqual(len(meta['calibration_sha256']),64)
+        self.assertIn('reset_after_s',meta['filtering']);self.assertEqual(meta['device'],'cpu')
+        self.assertEqual(meta['actual_image_size_right'],[1280,720])
 
     def test_world_setup_segments_recording_even_when_cancelled(self):
         _,wizard=self.execute([ord('t'),0,ord('w'),ord('q')])

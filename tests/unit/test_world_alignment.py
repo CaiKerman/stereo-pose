@@ -11,6 +11,7 @@ import numpy as np
 from stereo_pose.coordinates.rigid import RigidTransform, fit_rigid, relative_origin
 from stereo_pose.calibration.package import (
     read_bundle, load_registration, save_registered, activate_calibration, file_sha256,
+    atomic_npz,
 )
 from stereo_pose.coordinates.markers import read_references, match_features, detect_markers
 from stereo_pose.geometry import StereoTriangulator
@@ -142,6 +143,14 @@ class TestWorldPackage(unittest.TestCase):
     def test_world_metadata_object_is_refused_without_pickle(self):
         p=self.save();b=read_bundle(p);b['world_metadata_json']=np.array({'bad':1},dtype=object);np.savez(p,**b)
         reg,warnings=load_registration(p);self.assertIsNone(reg);self.assertTrue(warnings)
+
+    def test_atomic_archive_refuses_existing_path_and_failed_write(self):
+        old=self.source.read_bytes()
+        with self.assertRaises(FileExistsError):atomic_npz(self.source,{'new':np.arange(3)})
+        self.assertEqual(self.source.read_bytes(),old)
+        with patch('stereo_pose.calibration.package.np.savez',side_effect=OSError('disk full')):
+            with self.assertRaises(OSError):atomic_npz(self.root/'new.npz',{'new':np.arange(3)})
+        self.assertFalse((self.root/'new.npz').exists());self.assertFalse(list(self.root.glob('*.partial')))
 
 
 class TestMarkerCorrespondence(unittest.TestCase):

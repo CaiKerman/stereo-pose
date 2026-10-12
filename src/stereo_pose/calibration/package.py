@@ -93,6 +93,19 @@ def atomic_json(path, data):
         Path(temporary).unlink(missing_ok=True)
 
 
+def atomic_npz(path, bundle):
+    """Publish a complete NPZ without replacing any existing archive."""
+    final=Path(path);final.parent.mkdir(parents=True,exist_ok=True)
+    temporary=final.with_name(final.name+'.'+uuid.uuid4().hex+'.partial')
+    try:
+        with temporary.open('xb') as f:
+            np.savez(f,**bundle);f.flush();os.fsync(f.fileno())
+        if os.name == 'nt':os.rename(temporary,final)
+        else:os.link(temporary,final)
+        return final
+    finally:temporary.unlink(missing_ok=True)
+
+
 def save_registered(source, registration, calibration_dir, runtime_root):
     """Keep all original stereo arrays/shapes; publish unique saved NPZ atomically."""
     saved = ensure_managed_location(Path(calibration_dir)/'saved', runtime_root, 'world saved directory')
@@ -116,16 +129,7 @@ def save_registered(source, registration, calibration_dir, runtime_root):
     b.update(world_R=t.R,world_t_mm=t.t,world_coordinate_name=np.array(name),world_schema_version=np.array('1'),
              world_metadata_json=np.array(json.dumps(m,ensure_ascii=False,allow_nan=False)))
     final=saved/('world_'+datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')+'_'+uuid.uuid4().hex+'.npz')
-    temporary=final.with_suffix('.npz.partial')
-    try:
-        with temporary.open('xb') as f:
-            np.savez(f,**b);f.flush();os.fsync(f.fileno())
-        # Windows rename refuses an existing destination; POSIX link does likewise.
-        if os.name == 'nt': os.rename(temporary,final)
-        else: os.link(temporary,final)
-        return final
-    finally:
-        temporary.unlink(missing_ok=True)
+    return atomic_npz(final,b)
 
 
 def activate_calibration(config_path, path):

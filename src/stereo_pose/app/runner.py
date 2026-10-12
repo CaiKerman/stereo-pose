@@ -580,8 +580,11 @@ def run(args, cfg):
                             "calibration_file": str(calib_path), "calibration_sha256": active_artifact_sha,
                             "coordinate_frame": "rectified_left_camera" if registration is None else registration["name"],
                             "source_frame": "rectified_left_camera", "world": world_metadata,
-                            "model": str(p["model"]), "camera": dict(c), "actual_image_size": list(active_size),
-                            "quality": dict(qcfg), "filtering": dict(frame.filtering),
+                            "model": str(p["model"]), "device": str(device), "camera": dict(c), "actual_image_size": list(active_size),
+                            "actual_image_size_left": [fl.shape[1], fl.shape[0]],
+                            "actual_image_size_right": [fr.shape[1], fr.shape[0]],
+                            "timing_note": "host timing only; not sensor exposure timestamps",
+                            "quality": dict(qcfg), "filtering": {**dict(scfg), "enabled": bool(smoother.enabled)},
                             "selected_joints": list(readout_joints), "pose": dict(p)})
                         print(f"[recording] STARTED at {cfg['recording']['sample_rate_hz']:g}Hz (export sampling) -> {path}")
                     except Exception as e:

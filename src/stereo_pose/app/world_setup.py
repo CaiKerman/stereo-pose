@@ -100,8 +100,7 @@ def _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,
         if key in (ord('z'),ord('Z')):zero=not zero;candidate=None;error='Mode changed; press R to fit'
         if key in (ord('r'),ord('R')):
             try:
-                refs=read_references(reference)
-                if zero:refs=refs[:1]
+                refs=read_references(reference,first_only=zero)
                 up=False  # Physical-axis confirmation belongs to this fit only.
                 C,W=match_features(refs,left,right,triangulator,dictionary,cfg['quality']['max_epipolar_error_px'],cfg['quality']['max_reprojection_error_px'])
                 if zero:

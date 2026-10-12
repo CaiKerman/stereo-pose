@@ -30,9 +30,10 @@ def detect_markers(frame, dictionary):
     return result
 
 
-def read_references(path):
+def read_references(path, first_only=False):
     with Path(path).open(newline='',encoding='utf-8-sig') as f:
         rows=list(csv.DictReader(f))
+    if first_only:rows=rows[:1]
     references=[];seen=set()
     for row in rows:
         try:

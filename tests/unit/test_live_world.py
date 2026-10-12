@@ -136,3 +136,15 @@ class TestWInteraction(unittest.TestCase):
     def test_axis_projection_matches_rectified_frame(self):
         t=RigidTransform(np.eye(3),[0,0,-1000]);uv=world_axis_pixels(t,self.tri.P1)
         np.testing.assert_allclose(uv[0],[640,360]);self.assertGreater(uv[1,0],uv[0,0]);self.assertGreater(uv[2,1],uv[0,1])
+
+    def test_zero_requires_only_first_row_even_when_other_template_rows_blank(self):
+        from unittest.mock import Mock
+        Path(self.cfg['world']['reference_file']).write_text('dictionary,id,feature_type,X_mm,Y_mm,Z_mm\n'+
+            'DICT_4X4_50,0,center,0,0,0\nDICT_4X4_50,1,center,,,\nDICT_4X4_50,2,center,,,\n')
+        with patch('cv2.getWindowProperty',return_value=1),patch('cv2.imshow'),patch('cv2.waitKey',side_effect=[ord('z'),ord('r'),13]),patch('cv2.destroyWindow'):
+            out=run_world_setup(frame_left=np.zeros((720,1280,3),np.uint8),frame_right=np.zeros((720,1280,3),np.uint8),
+                triangulator=self.tri,calib_path=self.source,config_path=self.config,cfg=self.cfg,
+                detector=Mock(side_effect=[self.left,self.right]))
+        reg,_=load_registration(out)
+        self.assertEqual(len(reg['metadata']['reference_points']),1)
+        np.testing.assert_allclose(reg['transform'].apply([0,0,1000]),np.zeros(3),atol=1e-8)
