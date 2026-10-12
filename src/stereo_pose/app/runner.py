@@ -8,6 +8,7 @@ modules together while preserving the v1.2 runtime behavior and the
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import time
 from pathlib import Path
 
@@ -211,7 +212,21 @@ def _run_metric_validation(triangulator, frame_l, frame_r, stereo_cfg, runtime_r
     return saved
 
 
+def _close_windows():
+    try:
+        cv2.destroyAllWindows()
+    except cv2.error:
+        pass
+
+
 def run(args, cfg):
+    # Own resources before setup can fail, not only after the live loop starts.
+    # ExitStack runs every remaining callback even if one close operation fails.
+    with ExitStack() as resources:
+        return _run(args, cfg, resources)
+
+
+def _run(args, cfg, resources):
     c = cfg["camera"]
     p = cfg["pose"]
     s = cfg["stereo"]
@@ -271,10 +286,14 @@ def run(args, cfg):
 
     fourcc = c.get("fourcc", "MJPG")
     buffer_size = c.get("buffer_size", 1)
+    resources.callback(_close_windows)
     left = open_camera(c["left"], c["width"], c["height"], c["fps"], c["backend"], fourcc=fourcc, buffer_size=buffer_size)
+    resources.callback(left.release)
     right = open_camera(c["right"], c["width"], c["height"], c["fps"], c["backend"], fourcc=fourcc, buffer_size=buffer_size)
+    resources.callback(right.release)
     estimator = PoseEstimator(p["model"], device, p["detection_confidence"])
     publisher = build_publisher(o)
+    resources.callback(publisher.close)
     calibrator = RuntimeCalibration(s, cr)
 
     active_size = _capture_image_size(left, right, (c["width"], c["height"]))
@@ -650,10 +669,6 @@ def run(args, cfg):
 
     finally:
         recorder.stop("app_exit")
-        publisher.close()
-        left.release()
-        right.release()
-        cv2.destroyAllWindows()
 
 
 def should_pick_cameras(args) -> bool:

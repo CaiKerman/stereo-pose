@@ -339,7 +339,7 @@ def save_camera_choice(config_path, left: int, right: int) -> None:
 
     data: dict = {}
     if p.exists():
-        with open(p, "r", encoding="utf-8") as f:
+        with open(p, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             raise ValueError(f"{p} must contain a JSON object")

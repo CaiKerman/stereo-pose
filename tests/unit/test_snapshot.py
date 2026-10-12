@@ -556,7 +556,9 @@ class TestSnapshotPurity(unittest.TestCase):
     def test_runner_s_handler_reuses_captured_data_only(self):
         from stereo_pose.app import runner as runner_module
 
-        src = inspect.getsource(runner_module.run)
+        # run() now owns startup/exit resources; _run() contains the unchanged
+        # live pipeline and S handler. Keep checking the actual handler body.
+        src = inspect.getsource(runner_module._run)
         handler = src.split('key in (ord("s"), ord("S"))', 1)[1]
         handler = handler.split("elif key in", 1)[0]
         self.assertNotIn("read_stereo_pair", handler)

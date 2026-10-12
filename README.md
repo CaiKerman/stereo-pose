@@ -1,5 +1,14 @@
 ## Task003B default camera midpoint (2026-10-12)
 
+Startup readiness rechecked 2026-10-13: configured model path is honored;
+UTF-8 BOM configs load/save; moved explicit calibration selection is recovered
+only from an identical stored SHA-256 in the managed calibration directory;
+startup exceptions release opened cameras/publishers, and headless OpenCV is
+diagnosed before the picker. See the latest TEST_REPORT.md and Chinese guide.
+For the quickest update, replace code in the working project folder, retaining
+local config.json, runtime/ and the configured model. GitHub ZIP excludes those
+private/local assets. Use the same working Python environment and RUN_ME.bat.
+
 On `feat/003b-default-camera-midpoint`, live eye/joint XYZ and CSV default to
 `camera_midpoint` whenever a valid stereo artifact exists without a valid saved
 W/zero registration. Optical-center midpoint = (0,0,0); +X forward/away from

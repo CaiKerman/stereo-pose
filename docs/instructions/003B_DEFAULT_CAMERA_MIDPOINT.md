@@ -1,5 +1,20 @@
 # Task003B — default optical-center midpoint frame
 
+## Startup readiness follow-up (owner 2026-10-13 07:43 Asia/Shanghai)
+
+The owner asked to recheck completeness so the downloaded branch starts in one
+attempt. Continue this same branch/PR #6. Fix startup omissions within the
+existing scope: honor configured local weights, UTF-8 BOM config compatibility,
+recover a moved explicit NPZ only by its recorded complete-file SHA-256 before
+cleanup/picker, and release acquired resources on all setup failures. No
+dependencies, installation, numerical convention or quality gate changes.
+Never silently select latest calibration for a missing explicit selection.
+Preserve local configuration/weights/runtime and document update steps. The
+existing working Windows environment is reused; actual devices are not available
+in the cloud verification environment.
+
+## Original owner instruction
+
 Owner instruction, 2026-10-12 21:15 Asia/Shanghai: create a new branch from the
 working `trae/agent-c3dfMx` delivery. Before W world alignment, default origin
 is midway between cameras; +Y right camera -> left camera, +X away from cameras,

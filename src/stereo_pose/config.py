@@ -155,7 +155,7 @@ def load_config(path: Optional[Path] = None, validate: bool = True) -> dict:
         p = Path(path)
         if not p.exists():
             raise FileNotFoundError(f"Config file not found: {p}")
-        with open(p, "r", encoding="utf-8") as f:
+        with open(p, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             raise ConfigError("Config file must contain a JSON object.")
