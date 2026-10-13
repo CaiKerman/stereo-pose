@@ -1,5 +1,45 @@
-Task003B 默认相机中点坐标 — 2026-10-12
+Task004 P0 棋盘格自动捕获修复 — 2026-10-13
 =============================
+
+下载分支：fix/004-calibration-auto-capture（包括此前默认中点坐标与启动修复）。
+将本 ZIP 内的代码更新到已能运行的项目目录，保留 config.json、runtime/ 和模型文件。
+旧配置自动合并新的稳定性默认项，不需要手动改参数，不需要重装依赖。
+若你以前明确设置 auto_capture=false，新版仍尊重该设置；面板会显示 AUTO OFF，
+此时才需要把 config.json 的 calibration_runtime.auto_capture 改回 true。
+
+最少操作复测（不用重新求解/覆盖已有 NPZ）：
+1. RUN_ME，选原来的左右摄像头；按 C 进入标定。
+2. 让完整棋盘同时出现在两画面，确认 AUTO ON、L/R detected=YES，静置约2–3秒。
+   应看到 AUTO CAPTURED 和 pairs 增加1；继续不动不会重复采样。
+3. 明显移动棋盘或改变角度，重新静置，pairs 应再增加1。
+   小幅移动可能仍被判为重复姿态；按面板 pose distance 与原因提示处理。
+4. 按 C 返回原来的追踪。仅验自动采样不必按 R，不会更改当前 NPZ/世界坐标。
+
+标定检测 Hz 是实际棋盘检测频率，和追踪模式30 FPS不是同一个数字。
+稳定要求仍为至少3次有效检测和0.30秒观测时间；2Hz下三次检测跨度约1秒。
+5px运动预算、0.7秒采样间隔、0.12姿态多样性门槛保持不变。
+短暂识别失败不计入静止时长；长时间丢失/突发暂停后重新确认稳定。
+SPACE 保留强制采样，复用当前识别结果；重复姿态会警告但仍保存。
+
+新面板原因速查：
+WAIT DETECTION              左或右未完整检测；看 L/R YES/NO
+BOARD TOO SMALL             任一画面棋盘面积不足
+WAIT OBSERVATIONS           有效检测次数不足；不表示棋盘正在运动
+WAIT STABLE TIME            继续保持静止，等待足够观测时长
+CORNER MOTION DETECTED      测得角点位移/持续漂移；看左右 motion/drift
+CORNER ORDER JUMP           角点次序异常，正在重新确认
+WAIT CAPTURE INTERVAL       等待0.7秒间隔
+POSE REPEATED: MOVE BOARD   姿态重复；需要移动更明显或改变角度
+WAIT SAMPLES (n/12)         仅表示还不能按R求解，不阻止继续自动采样
+IMAGE WRITE FAILED          图片保存失败，样本不计数；检查目录权限/磁盘
+
+本次软件根因已用模拟数据复现并修复；不宣称你的真实硬件已验收，
+也不宣称 Stereo RMS=3.2548 已经改善或原因已闭环。已有标定仍可直接加载。
+详细算法、边界及测试见 docs/instructions/004_CALIBRATION_AUTO_CAPTURE.md 和 TEST_REPORT.md。
+
+下面为此前操作与功能说明。
+
+Task003B 默认相机中点坐标 — 2026-10-12
 
 2026-10-13 启动复查已补齐：
 启动器按 config.json 的 pose.model 检查真实模型路径，兼容带 BOM 的 UTF-8 配置；

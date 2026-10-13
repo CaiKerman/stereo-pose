@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 import numpy as np
+import cv2
 
 from stereo_pose.calibration.collection import RuntimeCalibration
 
@@ -103,6 +104,260 @@ class TestCalibrationCapturePolicy(unittest.TestCase):
             save.assert_not_called()
             self.assertFalse(result["captured"])
             self.assertFalse(result["good_area"])
+
+
+def _grid_det(dx=0., dy=0., angle=0., area=0.04, reverse=False):
+    xy=np.mgrid[0:9,0:6].T.reshape(-1,2).astype(np.float32)*16+[64.,40.]
+    center=xy.mean(axis=0)
+    rad=np.deg2rad(angle);R=np.array([[np.cos(rad),-np.sin(rad)],[np.sin(rad),np.cos(rad)]])
+    xy=(xy-center)@R.T+center+[dx,dy]
+    if reverse:xy=xy[::-1].copy()
+    return {'corners':xy.astype(np.float32),'center':tuple(xy.mean(axis=0)/[320,240]),
+            'area_ratio':area,'angle_deg':angle+(180 if reverse else 0),'sharpness':100.}
+
+
+class TestAdaptiveAutoCapture(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name);self.cal=_calibrator(self.root);self.cal.start()
+        self.frame=np.zeros((240,320,3),np.uint8)
+
+    def observe(self,t,left=None,right=None,*,missing=None,force=False):
+        left=_grid_det() if left is None else left
+        right=_grid_det(dx=-12) if right is None else right
+        if missing in ('left','both'):left=None
+        if missing in ('right','both'):right=None
+        with mock.patch.object(self.cal,'_detect',side_effect=[left,right]):
+            return self.cal.process(self.frame,self.frame,force_capture=force,timestamp_s=t)
+
+    def static_rate(self,hz):
+        captured=[]
+        for i in range(3*hz+1):
+            result=self.observe(i/hz)
+            if result['captured']:captured.append(i/hz)
+        self.assertEqual(len(captured),1)
+        self.assertGreaterEqual(captured[0]+1e-9,max(.30,2/hz))
+        self.assertLessEqual(captured[0],max(.30,2/hz)+1/hz+1e-9)
+        self.assertAlmostEqual(result['effective_detection_hz'],hz)
+        self.assertEqual(result['capture_reason'],'duplicate_pose')
+
+    def test_30_Hz_static_board_auto_captures(self):self.static_rate(30)
+    def test_5_Hz_static_board_auto_captures(self):self.static_rate(5)
+    def test_2_Hz_static_board_auto_captures(self):self.static_rate(2)
+
+    def test_real_OpenCV_SB_detects_and_auto_captures_synthetic_checkerboard(self):
+        frame=np.full((240,320,3),255,np.uint8)
+        for row in range(7):
+            for col in range(10):
+                if (row+col)%2 == 0:
+                    frame[40+row*18:40+(row+1)*18,64+col*18:64+(col+1)*18]=0
+        for t in (0.,.2,.4):
+            result=self.cal.process(frame,frame,timestamp_s=t)
+        self.assertTrue(result['detected_left']);self.assertTrue(result['detected_right'])
+        self.assertTrue(result['captured']);self.assertEqual(len(self.cal.samples),1)
+
+    def test_continuous_motion_in_either_view_never_captures(self):
+        for hz in (2,5,30):
+            for side in ('left','right','both'):
+                with self.subTest(hz=hz,side=side):
+                    self.cal.start()
+                    for i in range(3*hz+1):
+                        t=i/hz;dx=10*t
+                        left=_grid_det(dx=dx if side in ('left','both') else 0.)
+                        right=_grid_det(dx=-12+(dx if side in ('right','both') else 0.))
+                        self.assertFalse(self.observe(t,left,right)['captured'])
+                    self.assertEqual(len(self.cal.samples),0)
+
+    def test_consistent_rotation_never_captures(self):
+        for i in range(31):
+            self.observe(i/5,_grid_det(angle=i*3),_grid_det(dx=-12,angle=i*3))
+        self.assertEqual(len(self.cal.samples),0)
+
+    def test_slow_coherent_drift_has_a_visible_reason_below_5px_excursion(self):
+        for i in range(3):
+            result=self.observe(i/5,_grid_det(dx=i*2),_grid_det(dx=-12+i*2))
+        self.assertFalse(result['captured'])
+        self.assertLess(result['stability_motion_px'],5.)
+        self.assertEqual(result['motion_cause'],'coherent_drift')
+
+    def test_static_pixel_jitter_at_slow_and_fast_rates_is_allowed(self):
+        rng=np.random.default_rng(4)
+        for hz in (2,30):
+            with self.subTest(hz=hz):
+                self.cal.start()
+                for i in range(3*hz+1):
+                    left,right=_grid_det(),_grid_det(dx=-12)
+                    left['corners']+=rng.normal(0,.25,(54,2)).astype(np.float32)
+                    right['corners']+=rng.normal(0,.25,(54,2)).astype(np.float32)
+                    self.observe(i/hz,left,right)
+                self.assertEqual(len(self.cal.samples),1)
+
+    def test_short_detection_loss_does_not_count_blind_time_as_stability(self):
+        self.observe(0.)
+        self.observe(.1)
+        missed=self.observe(.2,missing='right')
+        self.assertFalse(missed['captured']);self.assertEqual(missed['capture_reason'],'detection_failed')
+        self.assertTrue(missed['detected_left']);self.assertFalse(missed['detected_right'])
+        reacquired=self.observe(.3)
+        self.assertFalse(reacquired['captured'])
+        self.assertAlmostEqual(reacquired['stable_dwell_s'],.1)
+        self.assertFalse(self.observe(.4)['captured'])
+        self.assertTrue(self.observe(.5)['captured'])
+
+    def test_long_detection_loss_requires_fresh_observations(self):
+        self.observe(0.);self.observe(.2)
+        self.observe(2.,missing='both')
+        fresh=self.observe(2.5)
+        self.assertFalse(fresh['captured']);self.assertEqual(fresh['stability_observations'],1)
+        self.assertFalse(self.observe(3.)['captured'])
+        self.assertTrue(self.observe(3.5)['captured'])
+
+    def test_large_valid_detection_gap_also_resets_without_explicit_failure(self):
+        self.observe(0.);self.observe(.2)
+        result=self.observe(2.)
+        self.assertFalse(result['captured']);self.assertEqual(result['stability_observations'],1)
+
+    def test_same_pose_is_not_repeated_even_with_zero_diversity_threshold(self):
+        self.cal.diversity_threshold=0.
+        for i in range(101):self.observe(i/5)
+        self.assertEqual(len(self.cal.samples),1)
+
+    def test_new_pose_captures_again_after_motion_stops(self):
+        for i in range(7):self.observe(i/5)
+        self.assertEqual(len(self.cal.samples),1)
+        for i in range(10,20):self.observe(i/5,_grid_det(dx=65),_grid_det(dx=53))
+        self.assertEqual(len(self.cal.samples),2)
+        self.assertEqual(self.cal.current['capture_reason'],'duplicate_pose')
+
+    def test_180_degree_detector_order_flips_do_not_fake_motion_or_diversity(self):
+        for i in range(16):
+            self.observe(i/5,_grid_det(reverse=bool(i%2)),_grid_det(dx=-12,reverse=bool((i+1)%2)))
+        self.assertEqual(len(self.cal.samples),1)
+        self.assertTrue(self.cal.current['stable'])
+        self.assertLess(self.cal.current['stability_motion_px'],1e-5)
+
+    def test_unrecognized_corner_permutation_is_not_stable(self):
+        self.observe(0.);self.observe(.1)
+        left=_grid_det();left['corners']=np.roll(left['corners'],1,axis=0)
+        result=self.observe(.4,left,_grid_det(dx=-12))
+        self.assertFalse(result['captured']);self.assertFalse(result['stable'])
+        self.assertEqual(result['stability_reason'],'corner_order_jump')
+
+    def test_persistently_scrambled_grid_never_becomes_new_stability_evidence(self):
+        for i in range(31):
+            left=_grid_det();left['corners']=np.roll(left['corners'],1,axis=0)
+            result=self.observe(i/5,left,_grid_det(dx=-12))
+            self.assertFalse(result['captured'])
+            self.assertEqual(result['stability_reason'],'corner_order_jump')
+        self.assertEqual(len(self.cal.samples),0)
+
+    def test_even_slower_consistent_cadence_does_not_deadlock_forever(self):
+        for i in range(6):self.observe(i*2.)
+        self.assertEqual(len(self.cal.samples),1)
+        self.assertAlmostEqual(self.cal.current['effective_detection_hz'],.5)
+
+    def test_same_timestamp_never_accumulates_three_observations(self):
+        for i in range(30):self.observe(0.)
+        self.assertEqual(len(self.cal.samples),0)
+        self.assertEqual(self.cal.current['stability_observations'],1)
+
+    def test_new_default_is_merged_into_existing_config_without_rewriting_it(self):
+        import json
+        from stereo_pose.config import load_config, validate_config, ConfigError
+        path=self.root/'config.json'
+        path.write_text(json.dumps({'calibration_runtime':{'stable_corner_motion_px':5.},'user':'keep'}))
+        before=path.read_bytes();cfg=load_config(path)
+        self.assertEqual(cfg['calibration_runtime']['stable_loss_grace_s'],1.25)
+        self.assertEqual(cfg['calibration_runtime']['stable_corner_motion_px'],5.)
+        self.assertEqual(path.read_bytes(),before)
+        defaults=json.loads((Path(__file__).parents[2]/'configs/default.json').read_text())
+        self.assertEqual(defaults['calibration_runtime'],load_config(None)['calibration_runtime'])
+        cfg['calibration_runtime']['stable_loss_grace_s']=0
+        with self.assertRaises(ConfigError):validate_config(cfg)
+
+    def test_sampling_interval_and_diversity_have_explicit_reasons(self):
+        self.cal.interval=5.
+        for i in range(7):self.observe(i/5)
+        for i in range(10,16):self.observe(i/5,_grid_det(dx=65),_grid_det(dx=53))
+        result=self.cal.current
+        self.assertTrue(result['stable']);self.assertEqual(result['capture_reason'],'waiting_interval')
+        self.assertGreater(result['interval_remaining_s'],0)
+        self.observe(6.,_grid_det(dx=65),_grid_det(dx=53))
+        self.observe(6.2,_grid_det(dx=65),_grid_det(dx=53))
+        self.assertTrue(self.observe(6.4,_grid_det(dx=65),_grid_det(dx=53))['captured'])
+
+    def test_manual_uses_current_pair_without_redetection_and_warns_on_duplicate(self):
+        self.cal.auto_capture=False
+        result=self.observe(0.)
+        self.assertFalse(result['stable']);self.assertEqual(result['capture_reason'],'auto_disabled')
+        with mock.patch.object(self.cal,'_detect',side_effect=AssertionError('duplicate detection')):
+            result=self.cal.capture_current()
+        self.assertTrue(result['captured']);self.assertEqual(len(self.cal.samples),1)
+        result=self.observe(.1,force=True)
+        self.assertTrue(result['captured']);self.assertTrue(result['manual_duplicate'])
+        self.assertEqual(len(self.cal.samples),2)
+
+    def test_manual_rejects_missing_or_small_board_and_no_stale_capture(self):
+        for kwargs in ({'missing':'right'},{'left':_grid_det(area=.001)}):
+            with self.subTest(kwargs=kwargs):
+                self.observe(0.,**kwargs)
+                result=self.cal.capture_current()
+                self.assertFalse(result['captured'])
+        self.cal.stop_without_delete()
+        self.assertFalse(self.cal.capture_current()['captured'])
+        self.assertEqual(len(self.cal.samples),0)
+
+    def test_insufficient_evidence_is_not_reported_as_board_motion(self):
+        result=self.observe(0.)
+        self.assertEqual(result['capture_reason'],'insufficient_observations')
+        with mock.patch('cv2.putText',wraps=cv2.putText) as draw:
+            canvas=self.cal.draw_overlay(np.zeros((240,640,3),np.uint8))
+        labels=[call.args[1] for call in draw.call_args_list]
+        self.assertTrue(any('WAIT OBSERVATIONS' in text for text in labels))
+        self.assertTrue(any('effective' in text.lower() and 'Hz' in text for text in labels))
+        self.assertFalse(any('WAITING FOR STILLNESS' in text for text in labels))
+        self.assertGreater(canvas.shape[0],240)
+
+    def test_failed_image_write_is_not_counted_as_capture(self):
+        with mock.patch('cv2.imwrite',side_effect=[True,False]):
+            result=self.observe(0.,force=True)
+        self.assertFalse(result['captured']);self.assertEqual(len(self.cal.samples),0)
+        self.assertEqual(result['capture_reason'],'capture_failed')
+
+
+class TestCalibrationSolveRegression(unittest.TestCase):
+    def test_existing_solver_complete_NPZ_and_reload_on_synthetic_rig(self):
+        from stereo_pose.calibration.package import read_bundle, load_readout_registration
+        from stereo_pose.geometry import StereoTriangulator
+        with tempfile.TemporaryDirectory() as tmp:
+            cal=_calibrator(Path(tmp));cal.start()
+            K=np.array([[900.,0,640],[0,900,360],[0,0,1]])
+            obj=np.zeros((54,3),np.float32);obj[:,:2]=np.mgrid[0:9,0:6].T.reshape(-1,2)*25
+            rng=np.random.default_rng(8);objs=[];left=[];right=[];paths=[]
+            Rst=cv2.Rodrigues(np.array([.01,-.02,.005]))[0];Tst=np.array([-300.,1.5,2.])
+            for i in range(16):
+                rvec=rng.uniform(-.35,.35,3);tvec=np.array([rng.uniform(-120,100),rng.uniform(-90,40),rng.uniform(850,1400)])
+                Rpose=cv2.Rodrigues(rvec)[0]
+                cl=cv2.projectPoints(obj,rvec,tvec,K,np.zeros(5))[0].astype(np.float32)
+                rr=cv2.Rodrigues(Rst@Rpose)[0];tr=Rst@tvec+Tst
+                cr=cv2.projectPoints(obj,rr,tr,K,np.zeros(5))[0].astype(np.float32)
+                objs.append(obj.copy());left.append(cl);right.append(cr);paths.append((Path(tmp)/'l.png',Path(tmp)/'r.png'))
+                cal.samples.append({'left':_grid_det(),'right':_grid_det(dx=-12),'descriptor':np.zeros(10)})
+            with mock.patch.object(cal,'_load_points',return_value=(objs,left,right,paths,(1280,720))):
+                result=cal.solve()
+            self.assertFalse(cal.active);self.assertEqual(result['sample_count'],16)
+            self.assertLess(result['stereo_rms'],.01)
+            bundle=read_bundle(result['path'])
+            self.assertTrue(all(k in bundle for k in ('K1','D1','K2','D2','R','T','R1','R2','P1','P2','Q')))
+            np.testing.assert_allclose(bundle['T'].reshape(-1),Tst,atol=.05)
+            tri=StereoTriangulator(result['path'])
+            point=np.array([[100.,40.,1100.]])
+            pl=cv2.projectPoints(point,np.zeros(3),np.zeros(3),K,np.zeros(5))[0].reshape(2)
+            pr=cv2.projectPoints(point,cv2.Rodrigues(Rst)[0],Tst,K,np.zeros(5))[0].reshape(2)
+            actual=tri.triangulate(pl,pr)
+            np.testing.assert_allclose(actual,bundle['R1']@point[0],atol=.1)
+            registration,warnings=load_readout_registration(result['path'],(1280,720))
+            self.assertFalse(warnings);self.assertEqual(registration['metadata']['mode'],'camera_midpoint')
 
 
 if __name__ == "__main__":

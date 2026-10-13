@@ -44,6 +44,10 @@ class TestTrackingLifecycle(unittest.TestCase):
         estimator.best_person.side_effect=lambda result:(self.L if result is results[0] else self.R,np.ones(17),0,1)
         camera=Mock();camera.get.side_effect=lambda k: {3:1280,4:720,5:30}.get(k,0)
         calibrator=Mock();calibrator.active=False
+        calibrator.start.side_effect=lambda:setattr(calibrator,'active',True)
+        calibrator.stop_without_delete.side_effect=lambda:setattr(calibrator,'active',False)
+        calibrator.draw_overlay.side_effect=lambda canvas,*a:canvas
+        self.calibrator_for_test=calibrator
         if calibration_solve is not None:
             calibrator.start.side_effect=lambda:setattr(calibrator,'active',True)
             calibrator.readiness.return_value=100;calibrator.recommended_readiness=75
@@ -69,7 +73,7 @@ class TestTrackingLifecycle(unittest.TestCase):
             wizard=stack.enter_context(patch('stereo_pose.app.runner.run_world_setup',return_value=world_result))
             stack.enter_context(patch('stereo_pose.app.runner.append_readout',side_effect=draw_readout))
             run(self.args,self.cfg)
-        self.assertEqual(read.call_count,len(keys));self.assertEqual(estimator.infer_pair.call_count,len(keys)-(1 if calibration_solve is not None else 0))
+        self.assertEqual(read.call_count,len(keys));self.assertEqual(estimator.infer_pair.call_count,len(keys)-calibrator.process.call_count)
         self.assertEqual(camera.release.call_count,2);publisher.close.assert_called_once()
         return publisher,wizard
 
@@ -79,6 +83,12 @@ class TestTrackingLifecycle(unittest.TestCase):
         msg=pub.publish.call_args.args[0]
         self.assertEqual(msg['coordinate_system'],'rectified_left_camera')
         self.assertEqual(len(msg['joints']),12);self.assertNotIn('left_eye',msg['joints'])
+
+    def test_calibration_SPACE_reuses_current_pair_and_C_returns_to_tracking(self):
+        self.execute([ord('c'),0,ord(' '),ord('c'),ord('q')])
+        self.assertEqual(self.calibrator_for_test.process.call_count,3)
+        self.calibrator_for_test.capture_current.assert_called_once()
+        self.calibrator_for_test.stop_without_delete.assert_called_once()
 
     def test_manual_start_sample_stop_and_no_extra_inference(self):
         self.execute([ord('t'),0,0,ord('t'),ord('q')])

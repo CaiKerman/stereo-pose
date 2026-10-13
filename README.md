@@ -1,4 +1,21 @@
-## Task003B default camera midpoint (2026-10-12)
+## Task004 static-board auto capture repair (2026-10-13)
+
+`fix/004-calibration-auto-capture` repairs the impossible 3-observations-in-.30s
+gate at 5/2Hz, using real-time stable evidence and adaptive loss handling.
+5px motion, .7s sampling interval and .12 diversity remain; coherent drift and
+order jumps are rejected. Fixed poses capture once; new stopped poses capture
+again. SPACE reuses current detections and retains force/duplicate warning.
+New panel distinguishes detection shortage, movement, interval and repeated pose
+and reports actual calibration detection Hz instead of tracking FPS.
+
+Old configs merge `stable_loss_grace_s=1.25` automatically. Retain local
+config/runtime/model; use RUN_ME -> C -> hold full board 2–3s -> move/hold again.
+C returns without changing active NPZ; no R solve needed for this short test.
+Details: [capture contract](docs/instructions/004_CALIBRATION_AUTO_CAPTURE.md).
+Existing world/default XYZ/NPZ/CSV, solver/triangulation and hotkeys are preserved.
+Owner hardware acceptance and reported RMS=3.2548 cause remain unconfirmed.
+
+## Parent Task003B default camera midpoint (2026-10-12)
 
 Startup readiness rechecked 2026-10-13: configured model path is honored;
 UTF-8 BOM configs load/save; moved explicit calibration selection is recovered

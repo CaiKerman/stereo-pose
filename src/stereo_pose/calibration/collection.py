@@ -1,8 +1,8 @@
 """Runtime stereo calibration collection and solver.
 
-Ported faithfully from the validated v1.2 reference
-(``reference/v1_2/stereo_pose/calibration.py``). ``readiness`` is a heuristic
-sample-preparation score, not a statistical confidence.
+Solver math and archive format preserve the v1.2 reference. Task004 capture
+evidence adapts to detector cadence. ``readiness`` is a heuristic sample-
+preparation score, not a statistical confidence.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import numpy as np
 
 from stereo_pose.persistence.paths import auto_dir
 from stereo_pose.calibration.package import atomic_npz
+from stereo_pose.calibration.stability import BoardStability, align_corner_order
 
 _SCHEMA_VERSION = "1"
 
@@ -47,6 +48,7 @@ class RuntimeCalibration:
         self.stable_dwell_s = float(runtime_cfg.get("stable_dwell_s", 0.30))
         self.stable_min_frames = int(runtime_cfg.get("stable_min_frames", 3))
         self.stable_corner_motion_px = float(runtime_cfg.get("stable_corner_motion_px", 5.0))
+        self.stable_loss_grace_s = float(runtime_cfg.get("stable_loss_grace_s", 1.25))
         self.robust_prune = bool(runtime_cfg.get("robust_prune", True))
         self.prune_min_epipolar_px = float(runtime_cfg.get("prune_min_epipolar_px", 0.8))
         self.prune_max_epipolar_px = float(runtime_cfg.get("prune_max_epipolar_px", 2.5))
@@ -57,9 +59,18 @@ class RuntimeCalibration:
         self.left_dir = None
         self.right_dir = None
         self.samples = []
-        self.last_capture_t = 0.0
+        self.last_capture_t = None
         self.current = None
-        self.stability_history = deque()
+        self.stability = BoardStability(self.stable_dwell_s,self.stable_min_frames,
+            self.stable_corner_motion_px,self.stable_loss_grace_s,self.pattern)
+        self.stability_history = self.stability.history
+        self._stability_info = self.stability.info
+        self.detection_history = deque(maxlen=120)
+        self._current_pair = None
+        self._current_timestamp = None
+        self._last_capture_corners = None
+        self.last_capture_notice = ''
+        self._notice_until = 0.
         self.camera_context = None
 
     def set_camera_context(self, left_index, right_index, backend, requested_size, requested_fps, actual_fps=None):
@@ -94,15 +105,17 @@ class RuntimeCalibration:
 
     def start(self):
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.session_dir = self.session_root / f"session_{stamp}"
+        self.session_dir = self.session_root / f"session_{stamp}_{uuid.uuid4().hex}"
         self.left_dir = self.session_dir / "left"
         self.right_dir = self.session_dir / "right"
         self.left_dir.mkdir(parents=True, exist_ok=True)
         self.right_dir.mkdir(parents=True, exist_ok=True)
         self.samples = []
-        self.last_capture_t = 0.0
+        self.last_capture_t = None
         self.current = None
-        self.stability_history.clear()
+        self._reset_capture_evidence()
+        self._last_capture_corners = None
+        self.last_capture_notice = ''
         self.active = True
         print(f"[calibration] session started: {self.session_dir}")
 
@@ -112,12 +125,12 @@ class RuntimeCalibration:
         self.active = False
         self.samples = []
         self.current = None
-        self.stability_history.clear()
+        self._reset_capture_evidence()
         print("[calibration] current session discarded")
 
     def stop_without_delete(self):
         self.active = False
-        self.stability_history.clear()
+        self._reset_capture_evidence()
         print("[calibration] left calibration mode; temporary session kept")
 
     def _detect(self, frame):
@@ -156,11 +169,15 @@ class RuntimeCalibration:
 
     @staticmethod
     def _descriptor(det):
+        # Row orientation is periodic in 180 degrees: an SB order reversal
+        # must not create a fictitious new pose or a discontinuity at +/-90.
+        angle=math.radians(det['angle_deg'])*2
+        weight=90/(math.pi*60)
         return np.array([
             det["center"][0],
             det["center"][1],
             min(1.0, math.sqrt(max(det["area_ratio"], 0.0)) * 2.5),
-            det["angle_deg"] / 60.0,
+            weight*math.sin(angle),weight*math.cos(angle),
         ], dtype=np.float32)
 
     def _is_diverse(self, dl, dr):
@@ -172,40 +189,36 @@ class RuntimeCalibration:
         return float(d.min()) >= self.diversity_threshold
 
     def _update_stability(self, now, dl, dr):
-        if dl is None or dr is None:
-            self.stability_history.clear()
-            return False, None, 0.0
+        self._stability_info=self.stability.update(now,dl,dr)
+        return self._stability_info['stable'],self._stability_info['motion_px'],self._stability_info['dwell_s']
 
-        self.stability_history.append((now, dl["corners"].copy(), dr["corners"].copy()))
+    def _reset_capture_evidence(self):
+        self.stability.reset();self._stability_info=self.stability.info
+        self.detection_history.clear();self._current_pair=None;self._current_timestamp=None
 
-        horizon = max(self.stable_dwell_s * 1.4, self.stable_dwell_s + 0.2)
-        while self.stability_history and (now - self.stability_history[0][0]) > horizon:
-            self.stability_history.popleft()
+    def _pose_distance(self, dl, dr):
+        if not self.samples:return None
+        desc=np.concatenate([self._descriptor(dl),self._descriptor(dr)])
+        return float(np.min(np.linalg.norm(np.stack([s['descriptor'] for s in self.samples])-desc,axis=1)))
 
-        if len(self.stability_history) < self.stable_min_frames:
-            return False, None, 0.0
-
-        recent = [x for x in self.stability_history if (now - x[0]) <= self.stable_dwell_s]
-        if len(recent) < self.stable_min_frames:
-            return False, None, 0.0
-        dwell = recent[-1][0] - recent[0][0]
-        if dwell < self.stable_dwell_s * 0.80:
-            return False, None, dwell
-
-        ref_l = recent[0][1]
-        ref_r = recent[0][2]
-        motion_l = max(float(np.mean(np.linalg.norm(x[1] - ref_l, axis=1))) for x in recent)
-        motion_r = max(float(np.mean(np.linalg.norm(x[2] - ref_r, axis=1))) for x in recent)
-        worst = max(motion_l, motion_r)
-        stable = worst <= self.stable_corner_motion_px
-        return stable, worst, dwell
+    def _new_pose(self, dl, dr):
+        if self._last_capture_corners is None:return True
+        for det,ref in zip((dl,dr),self._last_capture_corners):
+            corners,_=align_corner_order(det['corners'],ref)
+            if float(np.mean(np.linalg.norm(corners-ref,axis=1))) > self.stable_corner_motion_px+1e-6:
+                return True
+        return False
 
     def _save(self, frame_l, frame_r, dl, dr, stability_motion_px):
         i = len(self.samples)
         lp = self.left_dir / f"{i:03d}.png"
         rp = self.right_dir / f"{i:03d}.png"
-        cv2.imwrite(str(lp), frame_l)
-        cv2.imwrite(str(rp), frame_r)
+        try:
+            if not cv2.imwrite(str(lp), frame_l) or not cv2.imwrite(str(rp), frame_r):
+                raise OSError('failed to write both calibration images')
+        except (OSError,cv2.error):
+            lp.unlink(missing_ok=True);rp.unlink(missing_ok=True)
+            raise
         self.samples.append({
             "left": dl,
             "right": dr,
@@ -214,17 +227,21 @@ class RuntimeCalibration:
             "right_path": rp,
             "stability_motion_px": float(stability_motion_px or 0.0),
         })
-        self.last_capture_t = time.monotonic()
+        self.last_capture_t = self._current_timestamp if self._current_timestamp is not None else time.monotonic()
+        self._last_capture_corners = (dl['corners'].copy(),dr['corners'].copy())
         print(
             f"[calibration] captured pair {len(self.samples)} | "
             f"motion={float(stability_motion_px or 0.0):.2f}px | "
             f"readiness={self.readiness():.0f}/100"
         )
 
-    def process(self, frame_l, frame_r, force_capture=False):
-        now = time.monotonic()
+    def process(self, frame_l, frame_r, force_capture=False, timestamp_s=None):
+        now = time.monotonic() if timestamp_s is None else float(timestamp_s)
+        begin=time.perf_counter()
         dl = self._detect(frame_l)
+        left_done=time.perf_counter()
         dr = self._detect(frame_r)
+        right_done=time.perf_counter()
         valid = dl is not None and dr is not None
         good_area = bool(
             valid
@@ -233,26 +250,22 @@ class RuntimeCalibration:
         )
 
         stable, motion_px, stable_dwell = self._update_stability(now, dl, dr)
-        captured = False
-
-        # SPACE is a true manual override: the operator decides whether the
-        # checkerboard is physically still enough. We still require complete
-        # detection in both cameras and a minimum useful board size.
-        if force_capture and valid and good_area:
-            self._save(frame_l, frame_r, dl, dr, motion_px)
-            captured = True
-        elif valid and good_area and stable:
-            time_ok = (now - self.last_capture_t) >= self.interval
-            diverse = self._is_diverse(dl, dr)
-            if self.auto_capture and time_ok and diverse:
-                self._save(frame_l, frame_r, dl, dr, motion_px)
-                captured = True
-        elif force_capture:
-            print(
-                "[calibration] manual capture rejected: board must be fully visible "
-                "and large enough in BOTH cameras; automatic stillness is NOT required"
-            )
-
+        if not self.detection_history or now > self.detection_history[-1][0]:
+            self.detection_history.append((now,valid))
+        while len(self.detection_history)>2 and now-self.detection_history[0][0]>5.:
+            self.detection_history.popleft()
+        span=0. if len(self.detection_history)<2 else now-self.detection_history[0][0]
+        frequency=None if span <= 0 else sum(v for _,v in list(self.detection_history)[1:])/span
+        loop_hz=None if span <= 0 else (len(self.detection_history)-1)/span
+        info=self._stability_info
+        interval_remaining=0. if self.last_capture_t is None else max(0.,self.interval-(now-self.last_capture_t))
+        diverse=valid and self._is_diverse(dl,dr)
+        new_pose=valid and self._new_pose(dl,dr)
+        stability_reason=info['reason'] if not stable else 'stable'
+        reason=('detection_failed' if not valid else 'board_too_small' if not good_area else
+                'auto_disabled' if not self.auto_capture else stability_reason if not stable else
+                'duplicate_pose' if not diverse or not new_pose else
+                'waiting_interval' if interval_remaining>1e-9 else 'ready')
         self.current = {
             "valid": valid,
             "good_area": good_area,
@@ -261,9 +274,53 @@ class RuntimeCalibration:
             "stable_dwell_s": float(stable_dwell),
             "area_ratio_left": None if dl is None else float(dl["area_ratio"]),
             "area_ratio_right": None if dr is None else float(dr["area_ratio"]),
-            "captured": captured,
+            "captured": False,
+            "detected_left": dl is not None,"detected_right": dr is not None,
+            "auto_capture": self.auto_capture,"capture_reason":reason,
+            "stability_reason":stability_reason,"stability_observations":info['observations'],
+            "stability_progress":info['progress'],"stability_reset_reason":info['reset_reason'],
+            "stability_gap_limit_s":info['gap_limit_s'],
+            "motion_left_px":info['motion_left_px'],"motion_right_px":info['motion_right_px'],
+            "motion_cause":info['motion_cause'],
+            "drift_left_px":info['drift_left_px'],"drift_right_px":info['drift_right_px'],
+            "order_left":info['order_left'],"order_right":info['order_right'],
+            "effective_detection_hz":frequency,"calibration_loop_hz":loop_hz,
+            "detector_left_ms":(left_done-begin)*1000,"detector_right_ms":(right_done-left_done)*1000,
+            "interval_remaining_s":interval_remaining,"diverse":bool(diverse),"new_pose":bool(new_pose),
+            "pose_distance":self._pose_distance(dl,dr) if valid else None,"manual_duplicate":False,
         }
+        self._current_pair=(frame_l,frame_r,dl,dr);self._current_timestamp=now
+        if force_capture or reason=='ready':self._attempt_capture(force_capture)
         return self.current
+
+    def _attempt_capture(self, manual):
+        cur=self.current
+        if not cur['valid'] or not cur['good_area']:
+            if manual:print('[calibration] manual capture rejected: both boards must be fully visible and large enough')
+            return cur
+        frame_l,frame_r,dl,dr=self._current_pair
+        duplicate=not cur['diverse'] or not cur['new_pose']
+        cur['manual_duplicate']=bool(manual and duplicate)
+        if cur['manual_duplicate']:
+            print('[calibration] WARNING: manual duplicate pose; force capture retained (does not add pose diversity)')
+        try:
+            self._save(frame_l,frame_r,dl,dr,cur['stability_motion_px'])
+        except (OSError,cv2.error) as e:
+            cur.update(captured=False,capture_reason='capture_failed',capture_error=str(e))
+            self.last_capture_notice=f'CAPTURE FAILED: {e}'
+            print('[calibration]',self.last_capture_notice)
+        else:
+            cur.update(captured=True,capture_reason='manual_captured' if manual else 'auto_captured')
+            self.last_capture_notice=f'{"MANUAL" if manual else "AUTO"} captured pair {len(self.samples)}'
+            if cur['manual_duplicate']:self.last_capture_notice+=' | DUPLICATE WARNING (force retained)'
+        self._notice_until=self._current_timestamp+2.
+        return cur
+
+    def capture_current(self):
+        """SPACE uses the already detected current pair: no reread/re-detection."""
+        if self.current is None or self._current_pair is None:
+            return {'captured':False,'capture_reason':'no_current_pair'}
+        return self._attempt_capture(True)
 
     def readiness(self):
         if not self.samples:
@@ -283,8 +340,8 @@ class RuntimeCalibration:
         scale_span = max(areas) - min(areas) if len(areas) > 1 else 0.0
         scale_score = min(1.0, scale_span / 0.12) * 15.0
 
-        angles = [s[side]["angle_deg"] for s in self.samples for side in ("left", "right")]
-        angle_span = max(angles) - min(angles) if len(angles) > 1 else 0.0
+        angles = sorted(s[side]["angle_deg"]%180 for s in self.samples for side in ("left", "right"))
+        angle_span = 180-max(np.diff(angles+[angles[0]+180])) if len(angles)>1 else 0.
         angle_score = min(1.0, abs(angle_span) / 35.0) * 15.0
 
         return float(min(100.0, count_score + coverage_score + scale_score + angle_score))
@@ -454,7 +511,7 @@ class RuntimeCalibration:
             shutil.rmtree(self.session_dir, ignore_errors=True)
 
         self.active = False
-        self.stability_history.clear()
+        self._reset_capture_evidence()
         print(
             f"[calibration] saved {out} | Stereo RMS={solution['stereo_rms']:.4f} | "
             f"sample epipolar mean/max={epi_mean:.3f}/{epi_max:.3f}px | "
@@ -464,46 +521,40 @@ class RuntimeCalibration:
 
     def draw_overlay(self, canvas, pair_timing=None):
         cur = self.current or {}
-        ready = self.readiness()
-        motion = cur.get("stability_motion_px")
-        motion_text = "n/a" if motion is None else f"{motion:.2f}px"
-        area_l = cur.get("area_ratio_left")
-        area_r = cur.get("area_ratio_right")
-        area_text = (
-            "n/a"
-            if area_l is None or area_r is None
-            else f"L={area_l * 100:.1f}% R={area_r * 100:.1f}%"
-        )
+        def number(value,suffix=''):
+            return 'n/a'+suffix if value is None else f'{value:.2f}{suffix}'
         manual_ready = bool(cur.get("valid") and cur.get("good_area"))
         host_skew = None if pair_timing is None else pair_timing.get("host_grab_skew_ms")
         skew_text = "n/a" if host_skew is None else f"{host_skew:.2f}ms"
 
-        if not cur.get("valid"):
-            board_state = "NOT FOUND"
-        elif not cur.get("good_area"):
-            board_state = "TOO SMALL"
-        elif cur.get("stable"):
-            board_state = "STABLE / READY"
-        else:
-            board_state = "WAITING FOR STILLNESS"
-
+        states={'detection_failed':'WAIT DETECTION','board_too_small':'BOARD TOO SMALL',
+                'insufficient_observations':'WAIT OBSERVATIONS','settling':'WAIT STABLE TIME',
+                'moving':'CORNER MOTION DETECTED','corner_order_jump':'CORNER ORDER JUMP: RECHECKING',
+                'invalid_corners':'INVALID CORNER DATA','invalid_timestamp':'INVALID OBSERVATION TIME',
+                'duplicate_observation':'WAIT NEW FRAME','duplicate_pose':'POSE REPEATED: MOVE BOARD',
+                'waiting_interval':'WAIT CAPTURE INTERVAL','auto_disabled':'AUTO DISABLED',
+                'auto_captured':'AUTO CAPTURED','manual_captured':'MANUAL CAPTURED',
+                'capture_failed':'IMAGE WRITE FAILED','ready':'READY'}
+        area=lambda side:number(None if cur.get('area_ratio_'+side) is None else cur['area_ratio_'+side]*100,'%')
         lines = [
-            "CALIBRATION MODE - STATIC BOARD CAPTURE",
-            f"pairs: {len(self.samples)}/{self.target_pairs}   readiness*: {ready:.0f}/100",
-            f"board: {board_state}   area: {area_text}",
-            f"corner motion: {motion_text}   SPACE manual={'READY' if manual_ready else 'WAIT'}",
+            f'CALIBRATION | AUTO capture {"ON" if self.auto_capture else "OFF"} | {states.get(cur.get("capture_reason"),"WAIT DETECTION")}',
+            f'Board detected L={"YES" if cur.get("detected_left") else "NO"} R={"YES" if cur.get("detected_right") else "NO"} | effective BOTH detections={number(cur.get("effective_detection_hz"),"Hz")} | cal loop={number(cur.get("calibration_loop_hz"),"Hz")}',
+            f'SB detector cost L={number(cur.get("detector_left_ms"),"ms")} R={number(cur.get("detector_right_ms"),"ms")} | board area L={area("left")} R={area("right")} (min {self.min_area_ratio*100:.2f}%)',
+            f'Corner motion L={number(cur.get("motion_left_px"),"px")} R={number(cur.get("motion_right_px"),"px")} | limit={self.stable_corner_motion_px:g}px | order L={cur.get("order_left","n/a")} R={cur.get("order_right","n/a")}',
+            f'Coherent drift L={number(cur.get("drift_left_px"),"px")} R={number(cur.get("drift_right_px"),"px")} | guard={max(.5,self.stable_corner_motion_px*.25):.2f}px + trend fit >=80% | motion check={cur.get("motion_cause") or "none"}',
+            f'Stable observed time={cur.get("stable_dwell_s",0):.2f}/{self.stable_dwell_s:g}s | observations={cur.get("stability_observations",0)}/{self.stable_min_frames} | progress={cur.get("stability_progress",0)*100:.0f}% | loss timeout={cur.get("stability_gap_limit_s",self.stable_loss_grace_s):.2f}s | reset={cur.get("stability_reset_reason") or "none"}',
+            f'Capture interval remaining={cur.get("interval_remaining_s",0):.2f}s | pose distance={number(cur.get("pose_distance"))} (min {self.diversity_threshold:g}) | SPACE manual={"READY" if manual_ready else "WAIT"}',
+            f'pairs={len(self.samples)}/{self.target_pairs} | R solve={"READY" if self.can_solve() else f"WAIT SAMPLES ({len(self.samples)}/{self.min_pairs})"} | readiness*={self.readiness():.0f}/100',
             f"host grab skew: {skew_text}  (NOT sensor exposure skew)",
-            "AUTO capture ON" if self.auto_capture else "AUTO capture OFF",
             "SPACE=FORCE CAPTURE(size+visibility only)   R=solve   X=discard   C=return",
             "* readiness is heuristic; final metrics: Stereo RMS + epipolar error",
         ]
-
-        y = 34
-        for i, line in enumerate(lines):
+        if self.last_capture_notice and (self._current_timestamp or 0)<=self._notice_until:
+            lines.insert(8,self.last_capture_notice)
+        panel=np.zeros((len(lines)*24+18,canvas.shape[1],3),np.uint8)
+        for i,line in enumerate(lines):
             cv2.putText(
-                canvas, line, (18, y), cv2.FONT_HERSHEY_SIMPLEX,
-                0.72 if i < 6 else 0.48,
-                (255, 255, 255), 2 if i < 6 else 1, cv2.LINE_AA,
+                panel,line,(14,25+i*24),cv2.FONT_HERSHEY_SIMPLEX,
+                .52 if i<8 else .43,(255,255,255),1,cv2.LINE_AA,
             )
-            y += 29 if i < 6 else 21
-        return canvas
+        return cv2.vconcat([canvas,panel])
