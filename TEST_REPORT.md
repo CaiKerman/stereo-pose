@@ -1,3 +1,90 @@
+# Task004 automatic capture verification — 2026-10-13
+
+Tested implementation: `b2922dbaa3ffe4cfdaa593a28f15737a9318adb4`.
+PR #7: https://github.com/CaiKerman/stereo-pose/pull/7 ; branch
+`fix/004-calibration-auto-capture` from `082ba5e41e9f3dae47e4d2bfc787a4877523868b`.
+Completion commit changes documentation only; tested code unchanged.
+
+## Root reproduction
+
+Old _update_stability, static synthetic points for 10s:
+
+| Effective detection rate | Old stable events | Old first stable observation |
+|---|---|---|
+| 30Hz | 293 | .266667s |
+| 5Hz | 0 | never |
+| 2Hz | 0 | never |
+
+>=3 observations in .30s is impossible at 5/2Hz. This confirms a sufficient
+software defect; actual owner's detection cadence was not observed. New ideal
+first capture: 30Hz=.30s, 5Hz=.40s, 2Hz=1.00s from first processed observation,
+with one capture per held pose. Those times exclude detection/render/IO latency.
+
+## Exact commands and results
+
+Working directory `/workspace/scratch/5f3b60f3eba2/stereo-auto-capture`;
+Linux CPython 3.12.14, NumPy 2.3.5, OpenCV 5.0.0 headless, pytest 9.1.1.
+Existing isolated interpreter; no installations/model/network downloads.
+
+```bash
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q tests/unit/test_calibration_capture_policy.py
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q --junitxml=/workspace/scratch/5f3b60f3eba2/task004-pytest.xml
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m unittest discover -s tests -t . -q > /workspace/scratch/5f3b60f3eba2/task004-unittest.log 2>&1
+git diff --check
+```
+
+- Incoming latest midpoint/startup baseline: **285 methods + 35 subtests pass**,
+  no failures/skips (3.15s).
+- Focused capture checkpoint including real SB: **28 methods + 13 subtests pass**
+  (0.77s). Final cached-SPACE-after-AUTO regression added afterward.
+- Final pytest: **312 methods + 48 subtests passed**, no failure/skip (5.06s).
+  JUnit contains 360 entries including subtests, not 360 unique methods.
+- Final unittest: **312 tests, OK**, no failures/skips (4.649s).
+- Diff whitespace clean. Protected-module byte comparison and actual method
+  source comparison confirmed unchanged detector/loader/solver/epipolar math.
+- Synthetic panel rendered and visually inspected: all diagnostic lines fit the
+  production 1706x786 layout; camera view remains unobscured above the panel.
+
+## Covered acceptance cases
+
+30/5/2Hz still board; fixed pose no repeats (also diversity0); new moved pose
+resumes; continuous translation in left/right/both at each rate, rotation and
+slow coherent drift rejected; independent subpixel jitter allowed; brief loss
+pauses time, long loss/large stall resets; slower consistent .5Hz eventually
+captures; repeated timestamps cannot inflate observation count. Direct/reverse180
+flips do not fake motion/diversity, persistently rolled grid order never captures.
+
+SPACE unstable/off/duplicate paths retain force semantics while requiring full
+stereo visibility and area; cache prevents a second detector pass; manual after
+AUTO and repeated SPACE on the same pair warn but save. Missing/small data and
+exited calibration cannot use stale cache. Both PNG writes must succeed; IO
+failure produces visible status without increasing sample count. Interval,
+duplicate-pose and insufficient-observation states have explicit diagnostics.
+Config defaults match shipped JSON and old config merges grace without rewrite.
+
+Runner integration exercises C -> calibration -> SPACE -> C -> tracking, one
+process/detector pass per frame, existing hotkeys/model behavior. Existing full
+world/default/NPZ/CSV/protocol/restart/picker/cleanup regressions remain passing.
+
+Actual OpenCV findChessboardCornersSB (not stubbed) detects a generated 10x7
+square board and triggers capture. Existing actual calibrateCamera/stereoCalibrate/
+stereoRectify run on 16 ideal synthetic projected poses, saved complete NPZ
+reloads and recovers known stereo translation within .05mm and a holdout point
+within .1mm in that ideal synthetic setup. These tolerances verify numerical
+compatibility, not accuracy on owner hardware. No private images/NPZ committed.
+
+## Boundaries
+
+Windows GUI, webcams, sensor exposure synchronization and actual YOLO/GPU not
+available. Owner RMS=3.2548 cause not confirmed or improved by claim. Temporal
+order handling changes capture evidence, not solver's raw point correspondence;
+solver/high-accuracy closure remains deferred. No P1/P2, dependencies or merges.
+Owner quick acceptance needs only two auto samples at distinct poses, then C;
+no R solve or deletion of existing calibration needed to test software repair.
+
+## Earlier Task003B and historical reports
+
 # Task003B startup readiness verification — 2026-10-13
 
 Latest tested code: `3d977f45f65f77f75eac29351724ceb124d717e8`.

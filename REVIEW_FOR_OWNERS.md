@@ -1,3 +1,29 @@
+# Review for owners — Task004 capture repair
+
+- Ready software delivery: https://github.com/CaiKerman/stereo-pose/pull/7 ;
+  `fix/004-calibration-auto-capture` -> `feat/003b-default-camera-midpoint`.
+- Latest tested code: `b2922dbaa3ffe4cfdaa593a28f15737a9318adb4`; following
+  completion commit changes documentation only. Full 312-method/48-subtest
+  pytest and 312-test unittest pass. No code blocker found in self-review.
+- Remaining material limitation: owner actual detector cadence/noise/mounts and
+  Windows camera hardware are unavailable here. Old .30s-window defect is
+  reproduced, but not established as the owner's sole physical cause. RMS=3.2548
+  is not explained or improved by claim; original solver/re-detection unchanged.
+- Temporal order normalization does not certify left/right physical corner
+  identity in the calibration solver. Physical accuracy/correspondence closure
+  remains outside this P0 auto-capture repair. Ordinary webcam exposure sync and
+  motion between observations cannot be certified.
+- Owner minimal acceptance: full board in BOTH views and AUTO ON, hold 2–3s;
+  count rises once, stays fixed while held, rises again after meaningful move/
+  tilt + settling. Inspect exact blocker instead of repeatedly forcing SPACE.
+  C returns without changing active NPZ; no need to delete/re-solve old calibration.
+- Existing default/world XYZ, explicit NPZ selection, 5Hz manual CSV and hotkeys
+  remain regression-tested. Old config automatically merges new grace; only
+  explicit auto_capture=false requires enabling AUTO. No routine approval needed,
+  no merge authorized or requested; existing PR #2/#3/#6 intact.
+
+## Historical Task003B owner record
+
 # Review for owners — Task003B default midpoint
 
 2026-10-13 readiness audit: latest tested implementation

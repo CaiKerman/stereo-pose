@@ -1,5 +1,20 @@
 # REVIEW_INBOX.md
 
+## ACTIVE — Task004 auto capture repair delivered
+
+PR #7: https://github.com/CaiKerman/stereo-pose/pull/7 ; branch
+`fix/004-calibration-auto-capture` -> `feat/003b-default-camera-midpoint`.
+Tested code `b2922dbaa3ffe4cfdaa593a28f15737a9318adb4`; 312 methods + 48
+subtests passed, unittest 312 OK. No outstanding code blocker found in self-review.
+Low-rate window deadlock reproduced; stable evidence/state/diagnostics repaired.
+Corner drift/order, lost evidence, repeat poses, cached manual force including
+SPACE after AUTO, image write error, actual SB detection and original solver/NPZ
+paths verified. Protected math/world/CSV modules untouched.
+Owner hardware acceptance and reported RMS cause remain open; no accuracy claim.
+Existing PR #2/#3/#6 unchanged/unmerged; no merge or topology changes.
+
+## Historical Task003B review
+
 ## ACTIVE — Task003B default camera midpoint
 
 2026-10-13 readiness follow-up COMPLETE: implementation
