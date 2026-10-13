@@ -61,6 +61,7 @@ DEFAULT_CONFIG: dict = {
         "stable_dwell_s": 0.30,
         "stable_min_frames": 3,
         "stable_corner_motion_px": 5.0,
+        "stable_loss_grace_s": 1.25,
         "robust_prune": True,
         "prune_min_epipolar_px": 0.8,
         "prune_max_epipolar_px": 2.5,
@@ -271,6 +272,7 @@ def validate_config(cfg: dict) -> None:
     _num(cr.get("stable_dwell_s"), "calibration_runtime.stable_dwell_s", errors, lo=0.0)
     _int(cr.get("stable_min_frames"), "calibration_runtime.stable_min_frames", errors, lo=1)
     _num(cr.get("stable_corner_motion_px"), "calibration_runtime.stable_corner_motion_px", errors, lo=0.0)
+    _num(cr.get("stable_loss_grace_s"), "calibration_runtime.stable_loss_grace_s", errors, lo=0.01)
     _bool(cr.get("robust_prune"), "calibration_runtime.robust_prune", errors)
     _num(cr.get("prune_min_epipolar_px"), "calibration_runtime.prune_min_epipolar_px", errors, lo=0.0)
     _num(cr.get("prune_max_epipolar_px"), "calibration_runtime.prune_max_epipolar_px", errors, lo=0.0)

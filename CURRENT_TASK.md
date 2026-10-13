@@ -1,5 +1,20 @@
 # CURRENT_TASK
 
+## Task004 P0 — automatic checkerboard capture repair
+
+- Latest owner instruction: 2026-10-13 09:42 Asia/Shanghai, implement/fix/tests/submit the static-board WAITING FOR STILLNESS failure autonomously.
+- Branch: `fix/004-calibration-auto-capture`; base `feat/003b-default-camera-midpoint` at `082ba5e41e9f3dae47e4d2bfc787a4877523868b`.
+- PR: https://github.com/CaiKerman/stereo-pose/pull/7 . Existing #2/#3/#6 unchanged/unmerged; no merge/retarget/rebase/force-push/deletion.
+- Tested implementation: `b2922dbaa3ffe4cfdaa593a28f15737a9318adb4`; following completion commit contains documentation only.
+- Status: SOFTWARE REPAIR COMPLETE / FULL REGRESSION PASSED: 312 methods + 48 subtests, unittest 312 OK; physical hardware acceptance pending.
+- Instruction/root analysis: `docs/instructions/004_CALIBRATION_AUTO_CAPTURE.md`; tests and limits in TEST_REPORT.md, operator guide README_先看我.txt.
+- Confirmed sufficient code defect: >=3 observations in .30s never satisfied at 5/2Hz; reproduced without hardware. Owner actual detection cadence and Stereo RMS=3.2548 cause not confirmed.
+- Scope: timestamped stable evidence, adaptive loss, coherent motion/order handling, unique pose + interval/diversity state, cached SPACE force/duplicate warnings, diagnostic panel, write truth, synthetic solver/NPZ regression. Original numeric gates and protected math modules preserved.
+- Config: old configs merge new stable_loss_grace_s=1.25. Keep .30s / 3 / 5px / .7s / .12; explicitly disabled AUTO remains disabled. No default-config replacement or dependency install required.
+- Owner short test: RUN_ME -> C -> full board in both views, AUTO ON -> hold 2–3s (count+1) -> keep fixed (no repeat) -> visibly move/tilt and hold (count+1). C returns without replacing current NPZ; no R needed for this short test.
+
+## Previous Task003B delivery (history)
+
 ## Task003B — default camera midpoint coordinates
 
 - Latest follow-up: owner at 2026-10-13 07:43 asked to audit completeness for one-attempt startup. Startup fixes and full verification completed on this SAME branch/PR #6.

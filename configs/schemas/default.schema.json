@@ -222,6 +222,11 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "stable_loss_grace_s": {
+          "type": "number",
+          "minimum": 0.01,
+          "description": "Minimum loss/stall grace in seconds; tracker also permits three established detection-attempt periods. Missing time never adds stability evidence."
+        },
         "robust_prune": {
           "type": "boolean"
         },

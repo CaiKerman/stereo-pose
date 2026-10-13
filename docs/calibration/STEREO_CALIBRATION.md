@@ -2,11 +2,27 @@
 
 Artifact policy, metadata, and loading behavior.
 
+## Task004 capture policy
+
+Static evidence requires >=3 valid stereo grid observations and >=.30s observed
+time, not three frames inside a .30s window. This supports 30/5/2Hz detection;
+short missing detections pause time, loss/stall resets by an adaptive cadence
+timeout (minimum new stable_loss_grace_s=1.25). Default 5px excursion budget,
+.7s interval and .12 diversity remain. Coherent drift and bad order are rejected;
+direct/reverse-180 motion correspondence and circular orientation avoid fake
+movement/new poses. Same held pose never repeats. SPACE bypasses stability/
+interval/diversity on cached full/large stereo detections, warning on duplicates.
+Samples count only after both PNG writes succeed; capture session names are
+unique. New diagnostic panel explains observation/time/detection/motion/area/
+interval/repeated-pose blockers and actual detection rate. See Task004 instruction.
+Solver math, _load_points re-detection and NPZ format remain unchanged; this does
+not establish absolute accuracy or close the owner's high-RMS diagnosis.
+
 ## Coordinate frame
 
-The current PoC triangulates into the **rectified-left-camera** frame. The
-future world frame requires ground `Z=0`, `+Z` upward, and a user-calibrated
-origin/X/Y — none of which is defined in this task.
+Triangulation and legacy output use **rectified-left-camera** coordinates.
+Live XYZ/CSV applies validated saved W/zero or derived default camera-midpoint
+coordinates afterward. Task004 changes capture evidence, not those transforms.
 
 ## Artifact policy
 

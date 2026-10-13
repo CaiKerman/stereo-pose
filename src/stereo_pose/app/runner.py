@@ -396,12 +396,12 @@ def _run(args, cfg, resources):
                 calibrator.process(fl, fr, force_capture=False)
                 pl, pr = resize_pair(fl, fr)
                 canvas = cv2.hconcat([pl, pr])
-                calibrator.draw_overlay(canvas, pair_timing)
+                canvas = calibrator.draw_overlay(canvas, pair_timing)
                 cv2.imshow("Stereo Pose 3D", canvas)
                 key = cv2.waitKey(1) & 0xFF
 
                 if key == ord(" "):
-                    calibrator.process(fl, fr, force_capture=True)
+                    calibrator.capture_current()
                 elif key in (ord("r"), ord("R")):
                     if not calibrator.can_solve():
                         print(

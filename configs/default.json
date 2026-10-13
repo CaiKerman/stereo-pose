@@ -41,6 +41,7 @@
     "stable_dwell_s": 0.3,
     "stable_min_frames": 3,
     "stable_corner_motion_px": 5,
+    "stable_loss_grace_s": 1.25,
     "robust_prune": true,
     "prune_min_epipolar_px": 0.8,
     "prune_max_epipolar_px": 2.5,

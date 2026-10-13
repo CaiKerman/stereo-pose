@@ -1,3 +1,50 @@
+# Task004 P0 — checkerboard auto capture repair (2026-10-13)
+
+## Added
+- Pure timestamped BoardStability with bounded evidence/cadence, adaptive loss,
+  time pause during missing observations, per-view excursion/coherent drift,
+  temporal reverse-180 correspondence and malformed grid/order rejection.
+- Explicit capture reasons and readable separate diagnostic panel with actual
+  calibration detection Hz/cost, motion/order/time/count/progress and blockers.
+- Cached SPACE method, duplicate warning (including immediately after AUTO),
+  strict both-image write success and unique capture session folders.
+- 27 new test methods + 13 subtest cases; real SB synthetic-image detection and
+  original real solver/complete NPZ/triangulation reload regression.
+
+## Modified
+- Automatic capture state: fixed pose captured once; new distinct pose captured
+  after settling, original interval/diversity retained. Manual force still bypasses
+  stillness/interval/diversity and requires stereo visibility/min area.
+- Circular orientation descriptor/readiness span prevents 180-degree detector
+  flips producing fake diversity. Internal transient descriptor now 10 values;
+  this is not a saved NPZ or external protocol field.
+- Runner appends diagnostic panel and SPACE reuses already processed data;
+  no extra read/detector/inference call. Reset/exit clears cached frame evidence.
+- Config/default/schema adds stable_loss_grace_s=1.25; old config merges it.
+- Task, review and operator documentation now describes this independent fix.
+
+## Deleted
+No files. Removed impossible >=3 observations-in-.30s constraint and generic
+WAITING FOR STILLNESS catchall; removed duplicate SPACE detector pass.
+
+## Behavior/numerical/protocol/config changes
+- Stillness is actual observed duration + evidence count, not a high-FPS window.
+  Brief misses pause; sustained loss/stall resets. Motion cap stays 5px, added
+  coherent drift guard explicitly shown. Same pose does not repeat at threshold0.
+- Defaults .30s/3/5px/.7s/.12 unchanged. Explicit AUTO OFF respected.
+- Original detector, point loader, solver and epipolar method bodies identical;
+  12 protected math/world/CSV/quality/filtering/launcher modules byte-identical.
+  No triangulation/solver math, NPZ fields, external v1.2, world/default XYZ or
+  CSV schema changes. No dependencies/P1/P2. PNG failures do not count as samples.
+
+## Verification and limits
+312 pytest methods + 48 subtests pass; unittest 312 OK. Code:
+`b2922dbaa3ffe4cfdaa593a28f15737a9318adb4`, PR #7. Synthetic clock/points/images,
+actual OpenCV/files/solver, injected hardware/model/windows. Real hardware and
+RMS=3.2548 cause not certified. Original PR #2/#3/#6 unchanged/unmerged.
+
+## Historical Task003B changes
+
 # Task003B — default camera midpoint (2026-10-12)
 
 ## 2026-10-13 startup readiness follow-up

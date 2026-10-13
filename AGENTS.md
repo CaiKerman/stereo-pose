@@ -25,7 +25,17 @@ If two sources conflict, do not silently choose a new convention. Record the con
 - Do not merge your own PR unless the owner explicitly instructs you to do so.
 - Do not force-push shared reviewed history unless explicitly authorized.
 
-### Current owner-approved branch exception (2026-10-12 21:15)
+### Current Task004 owner-approved repair branch (2026-10-13 09:42)
+
+Use `fix/004-calibration-auto-capture`, based on exact latest midpoint/startup
+commit `082ba5e41e9f3dae47e4d2bfc787a4877523868b`; new PR #7 targets
+`feat/003b-default-camera-midpoint`. The owner explicitly requested the P0
+automatic checkerboard capture repair, tests and submission. Existing PR
+#2/#3/#6 remain unchanged/unmerged. Read CURRENT_TASK.md and
+`docs/instructions/004_CALIBRATION_AUTO_CAPTURE.md`. No merge/retarget,
+force-push, rebase, branch deletion, triangulation/solver math change or P1/P2.
+
+### Historical Task003B branch exception (2026-10-12 21:15)
 
 Task003B uses new `feat/003b-default-camera-midpoint`, starting exactly from
 `cf408cdd252ae3f277e5d7b6cba48f7b31e7a899` of `trae/agent-c3dfMx`.
