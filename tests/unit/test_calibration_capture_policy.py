@@ -297,6 +297,16 @@ class TestAdaptiveAutoCapture(unittest.TestCase):
         self.assertTrue(result['captured']);self.assertTrue(result['manual_duplicate'])
         self.assertEqual(len(self.cal.samples),2)
 
+    def test_SPACE_after_auto_capture_warns_and_still_preserves_force_semantics(self):
+        for t in (0.,.2,.4):self.observe(t)
+        self.assertEqual(len(self.cal.samples),1)
+        with mock.patch.object(self.cal,'_detect',side_effect=AssertionError('redetection')):
+            result=self.cal.capture_current()
+            self.assertTrue(result['captured']);self.assertTrue(result['manual_duplicate'])
+            self.assertEqual(len(self.cal.samples),2)
+            result=self.cal.capture_current()
+            self.assertTrue(result['manual_duplicate']);self.assertEqual(len(self.cal.samples),3)
+
     def test_manual_rejects_missing_or_small_board_and_no_stale_capture(self):
         for kwargs in ({'missing':'right'},{'left':_grid_det(area=.001)}):
             with self.subTest(kwargs=kwargs):

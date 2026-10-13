@@ -299,6 +299,12 @@ class RuntimeCalibration:
             if manual:print('[calibration] manual capture rejected: both boards must be fully visible and large enough')
             return cur
         frame_l,frame_r,dl,dr=self._current_pair
+        if manual:
+            # AUTO may already have saved this exact pair before SPACE arrived.
+            # Recheck against CURRENT saved samples, not pre-save cached flags.
+            cur['diverse']=self._is_diverse(dl,dr)
+            cur['new_pose']=self._new_pose(dl,dr)
+            cur['pose_distance']=self._pose_distance(dl,dr)
         duplicate=not cur['diverse'] or not cur['new_pose']
         cur['manual_duplicate']=bool(manual and duplicate)
         if cur['manual_duplicate']:
