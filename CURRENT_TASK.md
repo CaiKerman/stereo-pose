@@ -1,3 +1,6 @@
+Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
+Tested implementation commit: `ed7b46d7883c4cf1a7df8379f80aa22091965d86`; following completion commit changes documentation only.
+
 # CURRENT_TASK
 
 ## Task005 — responsive desktop/operator interface

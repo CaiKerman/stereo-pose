@@ -1,3 +1,5 @@
+Delivery: https://github.com/CaiKerman/stereo-pose/pull/8 ; tested implementation `ed7b46d7883c4cf1a7df8379f80aa22091965d86`. Full deterministic 331/60 and native GUI 9x3 checks pass; physical Windows acceptance pending.
+
 # Task005 — responsive operator interface
 
 Owner 2026-10-14 09:39 Asia/Shanghai requests a NEW branch focused on interaction

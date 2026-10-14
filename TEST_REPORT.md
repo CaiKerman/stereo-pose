@@ -1,3 +1,6 @@
+Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
+Tested implementation commit: `ed7b46d7883c4cf1a7df8379f80aa22091965d86`; following completion commit changes documentation only.
+
 # Task005 — verified interface regression (2026-10-14)
 
 Baseline before edits, exact Task004 parent b093e2d327b358c4571f5358d7e797930399774d:

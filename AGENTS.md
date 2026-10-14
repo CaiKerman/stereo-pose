@@ -28,7 +28,7 @@ If two sources conflict, do not silently choose a new convention. Record the con
 ### Current Task005 owner-approved UI branch (2026-10-14 09:39)
 
 Use `feat/005-responsive-desktop-ui` from Task004 `b093e2d327b358c4571f5358d7e797930399774d`,
-with a new PR to `fix/004-calibration-auto-capture`. Owner expressly requested
+with PR #8 (https://github.com/CaiKerman/stereo-pose/pull/8) to `fix/004-calibration-auto-capture`. Owner expressly requested
 interaction/display optimization and resizing. Historical GUI exclusions and
 Task004 branch rules are superseded for this task. Protect tested lower-level
 math/policy/data behavior; read CURRENT_TASK and Task005 instructions.
