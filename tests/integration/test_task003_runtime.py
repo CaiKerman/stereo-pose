@@ -32,7 +32,7 @@ class TestTrackingLifecycle(unittest.TestCase):
             q=np.c_[xyz,np.ones(17)]@P.T;return q[:,:2]/q[:,2:]
         self.L=proj(self.tri.P1);self.R=proj(self.tri.P2);self.image=np.zeros((720,1280,3),np.uint8)
 
-    def execute(self, keys, calibration_solve=None, world_result=None):
+    def execute(self, keys, calibration_solve=None, world_result=None, native=False):
         from stereo_pose.app.measurements import append_readout
         self.readout_registrations = []
         def draw_readout(canvas, rows, registration, *args, **kwargs):
@@ -47,6 +47,10 @@ class TestTrackingLifecycle(unittest.TestCase):
         calibrator.start.side_effect=lambda:setattr(calibrator,'active',True)
         calibrator.stop_without_delete.side_effect=lambda:setattr(calibrator,'active',False)
         calibrator.draw_overlay.side_effect=lambda canvas,*a:canvas
+        calibrator.current={'valid':True,'good_area':True,'capture_reason':'settling'}
+        calibrator.samples=[];calibrator.target_pairs=24;calibrator.min_pairs=12
+        calibrator.auto_capture=True;calibrator.diversity_threshold=.12
+        calibrator.readiness.return_value=50;calibrator.can_solve.return_value=False
         self.calibrator_for_test=calibrator
         if calibration_solve is not None:
             calibrator.start.side_effect=lambda:setattr(calibrator,'active',True)
@@ -57,11 +61,21 @@ class TestTrackingLifecycle(unittest.TestCase):
                 return {'path':calibration_solve,'T':[-300,0,0],'stereo_rms':0.,'sample_epipolar_mean_px':0.,'sample_epipolar_max_px':0.}
             calibrator.solve.side_effect=solve
         publisher=Mock()
+        if native:
+            display=Mock();display.native=True
+            display.show.side_effect=keys
+            self.display_for_test=display
         count={'i':0};clock={'t':0}
         def pair(*a,**kw):
             clock['t']+=250_000_000;count['i']+=1
             return True,self.image.copy(),self.image.copy(),{'host_midpoint_perf_ns':clock['t'],'wall_timestamp_ns':1_700_000_000_000_000_000+clock['t']}
         with ExitStack() as stack:
+            if native:
+                stack.enter_context(patch('stereo_pose.app.runner.create_display',return_value=display))
+            else:
+                from stereo_pose.app.desktop import HighGuiDisplay
+                stack.enter_context(patch('stereo_pose.app.runner.create_display',return_value=HighGuiDisplay()))
+                stack.enter_context(patch('stereo_pose.app.desktop.configure_highgui',return_value=False))
             for name,value in [('PoseEstimator',estimator),('open_camera',camera),('RuntimeCalibration',calibrator),('build_publisher',publisher),('resolve_device','cpu')]:
                 stack.enter_context(patch('stereo_pose.app.runner.'+name,return_value=value))
             read=stack.enter_context(patch('stereo_pose.app.runner.read_stereo_pair',side_effect=pair))
@@ -76,6 +90,28 @@ class TestTrackingLifecycle(unittest.TestCase):
         self.assertEqual(read.call_count,len(keys));self.assertEqual(estimator.infer_pair.call_count,len(keys)-calibrator.process.call_count)
         self.assertEqual(camera.release.call_count,2);publisher.close.assert_called_once()
         return publisher,wizard
+
+    def test_native_buttons_run_original_calibration_manual_and_return_handlers(self):
+        self.execute([ord('c'),ord(' '),ord('c'),ord('q')],native=True)
+        self.calibrator_for_test.capture_current.assert_called_once()
+        self.calibrator_for_test.stop_without_delete.assert_called_once()
+        self.display_for_test.close.assert_called_once()
+        views=[call.kwargs['view']['mode'] for call in self.display_for_test.show.call_args_list]
+        self.assertEqual(views,['tracking','calibration','calibration','tracking'])
+        for call in self.display_for_test.show.call_args_list:
+            for image in call.kwargs['pair']:self.assertEqual(image.shape,self.image.shape)
+
+    def test_native_csv_and_world_dialog_keep_lifecycle(self):
+        _,wizard=self.execute([ord('t'),0,ord('w'),ord('q')],native=True)
+        self.assertIs(wizard.call_args.kwargs['desktop'],self.display_for_test)
+        meta=json.loads(next((self.root/'recordings').glob('session_*/session.json')).read_text())
+        self.assertEqual(meta['stop_reason'],'world_setup')
+
+    def test_native_close_key_stops_recording_and_releases_resources(self):
+        self.execute([ord('t'),0,ord('q')],native=True)
+        meta=json.loads(next((self.root/'recordings').glob('session_*/session.json')).read_text())
+        self.assertEqual(meta['stop_reason'],'app_exit')
+        self.display_for_test.close.assert_called_once()
 
     def test_default_off_and_original_protocol(self):
         pub,_=self.execute([ord('q')])

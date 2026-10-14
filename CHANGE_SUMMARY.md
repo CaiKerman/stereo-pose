@@ -1,3 +1,32 @@
+# Task005 — responsive operator interface (2026-10-14)
+
+Added: optional Tk desktop presentation, Chinese context actions/help, responsive
+aspect-preserving cameras, DPI/work-area initial sizing, scrollable XYZ/diagnostics
+and calibration guidance; in-window world reference form and native smoke tool.
+Modified: runner display/key adapter and notifications; world setup input/display
+adapter only; camera picker window creation is resizable. Operator/task documents
+and presentation/lifecycle tests updated. Deleted: none.
+Behavior: buttons return existing action keys; keyboard compatibility preserved.
+Main/window-close flushes recording/releases resources. Missing Tk falls back to
+resizable OpenCV, with STEREO_POSE_UI or direct CLI selection. Guidance first,
+diagnostics in a separate tab. Native accepted XYZ rows show candidate/missing as
+blank with status rather than presenting rejected values as valid measurements.
+World form retains feature IDs/corner semantics; partial coordinates refused,
+unused blank templates omitted in full mode, first-row zero preserved. Any XYZ
+edit invalidates preview/confirmation, including uncommitted entry edits. Batched
+mode+fit events are ordered, input typing never fires action hotkeys. Manual
+capture duplicate notices retain the backend's 2-second notice lifetime.
+Numerical changes: NONE. Sixteen protected source modules, RUN_ME.py and exact
+world fit/zero/metadata/save-activation blocks verified identical to Task004.
+Protocol/config: no field/default/schema/dependency changes. Tk is optional; no
+runtime install/download. Reference CSV remains same contract; config/model/NPZ
+and recordings are retained. Physical and hardware acceptance remains pending.
+Known issues: original processing/solver remains synchronous; a long detector or
+solve can delay UI response. Windows multi-monitor DPI transitions and webcam/
+model performance are unverified. Legacy camera picker keeps original controls.
+
+## Previous task records
+
 # Task004 P0 — checkerboard auto capture repair (2026-10-13)
 
 ## Added

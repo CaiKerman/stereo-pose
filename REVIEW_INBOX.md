@@ -1,3 +1,14 @@
+# REVIEW_INBOX — Task005
+
+UI implementation and self-review complete; no outstanding software blocker.
+Branch feat/005-responsive-desktop-ui based on exact delivered Task004 b093e2d.
+331 full test methods +60 subtests and 9 native GUI methods at each of three DPI
+profiles passed. Protected lower layers remain identical. Owner Windows/physical
+acceptance pending; no merge or topology change authorized. Submission PR/head
+will be mirrored after creation.
+
+## Previous review inbox
+
 # REVIEW_INBOX.md
 
 ## ACTIVE — Task004 auto capture repair delivered

@@ -10,6 +10,7 @@ from stereo_pose.calibration.package import activate_calibration, save_registere
 from stereo_pose.coordinates.rigid import fit_rigid, relative_origin
 from stereo_pose.coordinates.markers import detect_markers, read_references, match_features
 from stereo_pose.persistence import ensure_managed_location
+from stereo_pose.app.desktop import configure_highgui
 
 
 def world_axis_pixels(transform, projection, length=100., anchor_world=(0.,0.,0.)):
@@ -30,7 +31,7 @@ def prepare_reference_file(path, ids, dictionary):
 
 
 def run_world_setup(*, frame_left, frame_right, triangulator, calib_path, config_path,
-                    cfg, registration=None, detector=detect_markers):
+                    cfg, registration=None, detector=detect_markers, desktop=None):
     """No camera read, no YOLO call, no imagery written. Return activated NPZ or None."""
     world=cfg['world'];dictionary=world['dictionary'];runtime=cfg['runtime']['root']
     size=(frame_left.shape[1],frame_left.shape[0])
@@ -42,7 +43,7 @@ def run_world_setup(*, frame_left, frame_right, triangulator, calib_path, config
     prepare_reference_file(reference,set(left)&set(right),dictionary)
     print(f'[world] frozen current frame pair. IDs L={sorted(left)} R={sorted(right)}')
     print(f'[world] edit real XYZ mm: {reference.resolve()} (R=reload/fit, U=confirm physical +Z up, ENTER=save+activate, Z=zero-only, ESC=cancel)')
-    if os.name=='nt':
+    if os.name=='nt' and desktop is None:
         try: subprocess.Popen(['notepad.exe',str(reference.resolve())])
         except OSError as e: print(f'[world] open CSV manually: {e}')
     frames=[]
@@ -58,17 +59,25 @@ def run_world_setup(*, frame_left, frame_right, triangulator, calib_path, config
         frames.append(rectified)
     fit=None;candidate=None;up=False;zero=False;error='Enter real XYZ in CSV, save it, then R=fit'; report={}; naming=False
     name=world['coordinate_name']
+    dialog=None
     try:
+        if desktop is not None:
+            from stereo_pose.app.world_form import WorldForm
+            dialog=WorldForm.__new__(WorldForm)
+            WorldForm.__init__(dialog,desktop,reference,left,right,dictionary,name)
         return _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,cfg,registration,dictionary,runtime,size,
-                           fit,candidate,up,zero,error,report,naming,name)
+                           fit,candidate,up,zero,error,report,naming,name,dialog)
     finally:
-        try:cv2.destroyWindow('World alignment')
-        except cv2.error:pass
+        if dialog is not None:dialog.close()
+        else:
+            try:cv2.destroyWindow('World alignment')
+            except cv2.error:pass
 
 
 def _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,cfg,registration,dictionary,runtime,size,
-                fit,candidate,up,zero,error,report,naming,name):
+                fit,candidate,up,zero,error,report,naming,name,dialog=None):
     world=cfg['world']
+    window_ready=False
     while True:
         a,b=[x.copy() for x in frames]
         if candidate is not None:
@@ -85,11 +94,18 @@ def _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,
                f'Up confirmed={up} | registration RMS={report.get("rms_mm","---")} max={report.get("max_mm","---")} mm',
                error, report.get('warning',''), 'Residual is registration consistency, not absolute eye accuracy.']
         for i,line in enumerate(lines): cv2.putText(panel,str(line),(12,23+i*22),cv2.FONT_HERSHEY_SIMPLEX,.44,(255,255,255),1,cv2.LINE_AA)
-        cv2.imshow('World alignment',cv2.vconcat([canvas,panel]));key=cv2.waitKey(30)&0xff
+        if dialog is not None:
+            key=dialog.show((a,b),zero=zero,up=up,candidate=candidate,report=report,error=error)
+            name=dialog.name.get().strip()
+            if getattr(dialog,'dirty',False):candidate=None;up=False
+        else:
+            if not window_ready:
+                configure_highgui('World alignment',(480,canvas.shape[1],3));window_ready=True
+            cv2.imshow('World alignment',cv2.vconcat([canvas,panel]));key=cv2.waitKey(30)&0xff
         if key==27 or (key in (ord('q'),ord('Q')) and not naming):
             return None
         # A window close is equivalent to cancellation (not a hung modal loop).
-        if cv2.getWindowProperty('World alignment',cv2.WND_PROP_VISIBLE) < 1:return None
+        if dialog is None and cv2.getWindowProperty('World alignment',cv2.WND_PROP_VISIBLE) < 1:return None
         if naming:
             if key==13: naming=False
             elif key in (8,127):name=name[:-1]

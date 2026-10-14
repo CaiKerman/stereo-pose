@@ -1,3 +1,16 @@
+# Task005 owner review
+
+Interface software implementation and full regression complete. Independent
+branch `feat/005-responsive-desktop-ui` -> `fix/004-calibration-auto-capture`;
+submission PR/head will be recorded in the completion commit. Existing PRs remain
+unchanged/unmerged. No mathematical or data-contract decision requested.
+Remaining owner acceptance: actual Windows resizing/maximize/display scaling,
+physical LEFT/RIGHT camera picker, existing NPZ restore and buttons/W reference
+form with real printed markers. Processing remains synchronous; long detection
+or solve still delays event handling. This is a UI change, not accuracy closure.
+
+## Previous review records
+
 # Review for owners — Task004 capture repair
 
 - Ready software delivery: https://github.com/CaiKerman/stereo-pose/pull/7 ;

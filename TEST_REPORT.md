@@ -1,3 +1,53 @@
+# Task005 — verified interface regression (2026-10-14)
+
+Baseline before edits, exact Task004 parent b093e2d327b358c4571f5358d7e797930399774d:
+pytest **312 methods + 48 subtests passed**, 0 failed/skipped (3.78s).
+
+Final deterministic full suite: **331 methods + 60 subtests passed**, 0 failed/
+skipped (4.94s); unittest **331 tests OK**, 0 failed/skipped (4.653s). JUnit has
+391 method/subtest entries. Commands from repository root:
+
+```bash
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q --junitxml=/workspace/scratch/5f3b60f3eba2/task005-pytest.xml
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m unittest discover -s tests -t . -q
+```
+
+Added tests: viewport fit/initial DPI bounds; no distortion/cropping of display
+copies; single action/disabled button/stale mode dispatch; accepted/candidate/
+missing display separation; explicit coordinate frame provenance; no calibration
+button gating; insufficient detections distinct from motion; manual duplicate
+notice survives next frame until backend expiry; optional Tk fallback/window
+close; reference editing atomicity/partial XYZ/unused templates/zero-first-row;
+native adapter original C/SPACE/C, CSV/W segmentation, inference count and cleanup.
+Existing capture/real SB/synthetic original solver/NPZ/world/default XYZ/CSV and
+legacy protocol tests continue passing. No cameras, GPU, model or internet needed.
+
+Native Tk smoke: `PYTHONPATH=src:. python tools/smoke_desktop_ui.py` with Xvfb and
+Chinese bitmap font. **9 methods passed at EACH of three virtual desktop profiles**:
+1920x1080 at 96 DPI (1.904s), 3840x2160 at 144 DPI (4.924s), 3840x2160 at 192 DPI
+(6.052s); 27 native method executions, no failures or Tk callback errors. Includes
+viewport requests 800x600, 1024x768, 1366x768, 1920x1080, 600x900, 520x420 (DPI-aware
+minimum applies), control visibility, image aspect ratios, real widget button/
+keyboard actions, entry typing isolation, dirty preview refusal, same-event
+mode/fit ordering, close/cancel, and complete original world fit -> confirmation
+-> NPZ save/activate/reload using synthetic controls. Screenshot visual review of
+real Chinese Tk labels and 800x600/1366x768 layout performed; no user images used.
+Test Xvfb/fonts are scratch-only QA dependencies, never app/repository dependencies.
+
+Compatibility identity check vs parent: geometry/triangulation, coordinates/
+camera_midpoint, rigid, markers, calibration/package, collection, stability,
+app/measurements, outputs/csv_recorder, v1_message, quality/scoring, speed_gate,
+filtering/one_euro, capture/camera, persistence and config are byte-identical.
+RUN_ME.py is byte-identical. Original world fit/zero/metadata and save/activate
+blocks are byte-identical. Only UI orchestration/presentation changed.
+`git diff --check` clean. No config rewrite, math/quality threshold or protocol
+change. Actual Windows/toolkit/backend, physical cameras, model/GPU, multi-monitor
+DPI transitions and absolute accuracy remain untested; no hardware acceptance.
+Processing remains synchronous, so slow detection/solve can delay UI events.
+OpenCV compatibility/picker native HWND path injected, not physically exercised.
+
+## Previous task reports
+
 # Task004 automatic capture verification — 2026-10-13
 
 Tested implementation: `b2922dbaa3ffe4cfdaa593a28f15737a9318adb4`.

@@ -408,7 +408,13 @@ def run_camera_selection(
     if wait_key is None:
         wait_key = lambda: cv2.waitKey(30) & 0xFF  # noqa: E731
     if show_fn is None:
+        window_initialized = False
         def show_fn(canvas):  # noqa: F811
+            nonlocal window_initialized
+            if not window_initialized:
+                from stereo_pose.app.desktop import configure_highgui
+                configure_highgui(WINDOW_NAME,canvas.shape)
+                window_initialized=True
             cv2.imshow(WINDOW_NAME, canvas)
     if destroy_fn is None:
         destroy_fn = cv2.destroyAllWindows

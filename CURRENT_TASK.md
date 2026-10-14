@@ -1,5 +1,18 @@
 # CURRENT_TASK
 
+## Task005 — responsive desktop/operator interface
+
+- Owner authorized new branch on 2026-10-14 09:39 Asia/Shanghai.
+- Branch: `feat/005-responsive-desktop-ui`, parent Task004 `b093e2d327b358c4571f5358d7e797930399774d`.
+- New PR base: `fix/004-calibration-auto-capture`; existing PR #2/#3/#6/#7 unchanged/unmerged.
+- Status: SOFTWARE UI COMPLETE; full 331-method/60-subtest regression and 27 native GUI executions passed. Instruction: `docs/instructions/005_RESPONSIVE_DESKTOP_UI.md`.
+- Scope is UI/input adapters; protect verified math, detection, capture policy, NPZ/CSV and protocols.
+- No merge/main edits/retarget/rebase/force-push/deletion authorized.
+
+## Previous Task004 delivery (history)
+
+# CURRENT_TASK
+
 ## Task004 P0 — automatic checkerboard capture repair
 
 - Latest owner instruction: 2026-10-13 09:42 Asia/Shanghai, implement/fix/tests/submit the static-board WAITING FOR STILLNESS failure autonomously.

@@ -25,6 +25,15 @@ If two sources conflict, do not silently choose a new convention. Record the con
 - Do not merge your own PR unless the owner explicitly instructs you to do so.
 - Do not force-push shared reviewed history unless explicitly authorized.
 
+### Current Task005 owner-approved UI branch (2026-10-14 09:39)
+
+Use `feat/005-responsive-desktop-ui` from Task004 `b093e2d327b358c4571f5358d7e797930399774d`,
+with a new PR to `fix/004-calibration-auto-capture`. Owner expressly requested
+interaction/display optimization and resizing. Historical GUI exclusions and
+Task004 branch rules are superseded for this task. Protect tested lower-level
+math/policy/data behavior; read CURRENT_TASK and Task005 instructions.
+No merge/retarget/rebase/force-push/deletion or main edits.
+
 ### Current Task004 owner-approved repair branch (2026-10-13 09:42)
 
 Use `fix/004-calibration-auto-capture`, based on exact latest midpoint/startup
