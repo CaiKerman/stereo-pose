@@ -72,6 +72,12 @@ class NativeSmoke(unittest.TestCase):
         self.ui.show(pair=(self.image,self.image),view=view)
         self.assertEqual(tuple(self.ui.tree.item(self.ui.tree.get_children()[0],'values')[1:4]),('—','—','—'))
 
+    def test_readonly_help_focus_keeps_quit_and_record_shortcuts(self):
+        self.ui.tabs.select(2)
+        for key in ('t','q'):
+            self.ui._keyboard(SimpleNamespace(widget=self.ui.help_text,keysym=key,char=key))
+            self.assertEqual(self.ui.show(pair=(self.image,self.image),view=self.view),ord(key))
+
     def form(self):
         form=WorldForm(self.ui,self.path,{0:None,1:None,2:None},{0:None,1:None,2:None},'DICT_4X4_50','WORLD')
         self.addCleanup(form.close)

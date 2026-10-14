@@ -293,7 +293,8 @@ class DesktopDisplay:
 
     def _keyboard(self,event):
         # Entry widgets are used by the modal world dialog; never steal typing.
-        if event.widget.winfo_class() in ('Entry','TEntry','Text','TCombobox'):
+        widget_class=event.widget.winfo_class()
+        if widget_class in ('Entry','TEntry','TCombobox') or (widget_class=='Text' and str(event.widget['state'])!='disabled'):
             return
         if event.keysym=='Escape':key=27
         elif event.char and len(event.char)==1:key=ord(event.char.lower())
