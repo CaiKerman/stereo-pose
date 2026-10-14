@@ -1,11 +1,11 @@
 Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
-Tested implementation commit: `ed7b46d7883c4cf1a7df8379f80aa22091965d86`; following completion commit changes documentation only.
+Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
 
 # Task005 owner review
 
 Interface software implementation and full regression complete. Independent
 branch `feat/005-responsive-desktop-ui` -> `fix/004-calibration-auto-capture`;
-PR #8 contains tested implementation ed7b46d7883c4cf1a7df8379f80aa22091965d86 followed by documentation only. Existing PRs remain
+PR #8 contains tested implementation 5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738 followed by documentation only. Existing PRs remain
 unchanged/unmerged. No mathematical or data-contract decision requested.
 Remaining owner acceptance: actual Windows resizing/maximize/display scaling,
 physical LEFT/RIGHT camera picker, existing NPZ restore and buttons/W reference

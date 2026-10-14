@@ -1,11 +1,11 @@
 Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
-Tested implementation commit: `ed7b46d7883c4cf1a7df8379f80aa22091965d86`; following completion commit changes documentation only.
+Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
 
 # REVIEW_INBOX — Task005
 
 UI implementation and self-review complete; no outstanding software blocker.
 Branch feat/005-responsive-desktop-ui based on exact delivered Task004 b093e2d.
-331 full test methods +60 subtests and 9 native GUI methods at each of three DPI
+331 full test methods +60 subtests and 10 native GUI methods at each of three DPI
 profiles passed. Protected lower layers remain identical. Owner Windows/physical
 acceptance pending; no merge or topology change authorized. Submission PR/head is recorded above.
 

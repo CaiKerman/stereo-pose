@@ -1,5 +1,5 @@
 Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
-Tested implementation commit: `ed7b46d7883c4cf1a7df8379f80aa22091965d86`; following completion commit changes documentation only.
+Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
 
 # Task005 — verified interface regression (2026-10-14)
 
@@ -7,7 +7,7 @@ Baseline before edits, exact Task004 parent b093e2d327b358c4571f5358d7e797930399
 pytest **312 methods + 48 subtests passed**, 0 failed/skipped (3.78s).
 
 Final deterministic full suite: **331 methods + 60 subtests passed**, 0 failed/
-skipped (4.94s); unittest **331 tests OK**, 0 failed/skipped (4.653s). JUnit has
+skipped (4.98s); unittest **331 tests OK**, 0 failed/skipped (4.653s). JUnit has
 391 method/subtest entries. Commands from repository root:
 
 ```bash
@@ -26,11 +26,11 @@ Existing capture/real SB/synthetic original solver/NPZ/world/default XYZ/CSV and
 legacy protocol tests continue passing. No cameras, GPU, model or internet needed.
 
 Native Tk smoke: `PYTHONPATH=src:. python tools/smoke_desktop_ui.py` with Xvfb and
-Chinese bitmap font. **9 methods passed at EACH of three virtual desktop profiles**:
-1920x1080 at 96 DPI (1.904s), 3840x2160 at 144 DPI (4.924s), 3840x2160 at 192 DPI
-(6.052s); 27 native method executions, no failures or Tk callback errors. Includes
+Chinese bitmap font. **10 methods passed at EACH of three virtual desktop profiles**:
+1920x1080 at 96 DPI (2.176s), 3840x2160 at 144 DPI (5.934s), 3840x2160 at 192 DPI
+(6.307s); 30 native method executions, no failures or Tk callback errors. Includes
 viewport requests 800x600, 1024x768, 1366x768, 1920x1080, 600x900, 520x420 (DPI-aware
-minimum applies), control visibility, image aspect ratios, real widget button/
+minimum applies), control visibility, image aspect ratios, read-only help/diagnostic focus retaining shortcuts, real widget button/
 keyboard actions, entry typing isolation, dirty preview refusal, same-event
 mode/fit ordering, close/cancel, and complete original world fit -> confirmation
 -> NPZ save/activate/reload using synthetic controls. Screenshot visual review of
