@@ -348,7 +348,7 @@ class DesktopDisplay:
         if event.keysym=='Escape':key=27
         elif event.char and len(event.char)==1:key=ord(event.char.lower())
         else:return
-        if key in map(ord,'clw tfmgpdvsqrx'.replace(' ','')) or key in (27,ord(' ')):
+        if key in map(ord,'clkw tfmgpdvsqrx'.replace(' ','')) or key in (27,ord(' ')):
             self.pending.offer(key,keyboard=True)
             return 'break'
 
@@ -410,6 +410,28 @@ class DesktopDisplay:
             self._initialize_preview_split()
         except self.tk.TclError:self.closed=True
         return ord('q') if self.closed else self.pending.take()
+
+    def save_calibration_file(self, current):
+        """Choose a location for a byte-identical backup of the active NPZ."""
+        from tkinter import filedialog
+        p=Path(current)
+        picked=filedialog.asksaveasfilename(
+            parent=self.root,
+            title='另存当前完整标定 NPZ（不会切换正在使用的文件）',
+            initialdir=str(p.parent),
+            initialfile=p.stem+'_backup.npz',
+            defaultextension='.npz',
+            filetypes=[('标定文件 NPZ','*.npz')],
+        )
+        return picked or None
+
+    def confirm_npz_overwrite(self, path):
+        from tkinter import messagebox
+        return messagebox.askyesno(
+            '确认覆盖已有 NPZ',
+            f'目标文件已存在：\n{path}\n\n覆盖后旧文件内容将丢失。确定覆盖吗？',
+            parent=self.root,
+        )
 
     def choose_calibration_file(self, initialdir=None):
         """Choose an existing NPZ; file validation and activation live in runner."""
