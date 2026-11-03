@@ -1,3 +1,5 @@
+Status note: after initial implementation, invalid-pair filtering was added for sample sets larger than the original 12-pair minimum. Review it alongside the new `corner_order_rejected_indices` NPZ field and regression case; no 24-pair minimum added.
+
 ## OPEN — 2026-11-03 owner-requested C→R stereo checkerboard correspondence repair
 
 Confirmed source-code gap: Task002 metric verification `V` canonicalizes direct vs reversed_180 with known stereo geometry, but Task004/005 NPZ solve `_load_points` and `stereoCalibrate` independently index left/right corners without cross-camera consistency verification. PR #8 now adds pre-solve direct/reversed_180 hypothesis RANSAC, clear ambiguous/invalid rejection, orientation metadata, and fail-before-publish for catastrophic epipolar geometry, retaining 12-pair minimum and arbitrary different camera intrinsics/rig angle. Synthetic local verification and formal new tests are documented in TEST_REPORT; full repo and Windows hardware acceptance remain OPEN. No PR merging or retargeting.
