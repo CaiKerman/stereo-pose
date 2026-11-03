@@ -1,3 +1,10 @@
+## 2026-11-03 W world-coordinate setup: diagnostic and frozen-preview repair
+
+- Fixed: the W modal Tk camera pane was independently suffering from the same early splitter initialization as the main UI; assign a proper frozen-video viewport after first actual native layout, without altering later user drags.
+- Fixed: ArUco "recognized" label now explicitly means two-dimensional identification, not successful stereo reconstruction.
+- Replaced the generic ID/corner stereo failure with actual depth (mm), epipolar error and threshold (px), reprojection error and threshold (px), and distinct nonfinite/negative-depth/unavailable-triangulation causes; advise cancel/re-enter because frames are frozen.
+- Tests added: synthetic geometry failure reasons/thresholds and native UI one-pixel W-splitter recovery. Full stereo triangulation mathematical gates and quality limits have **not** changed; no forced registration or unsafe acceptance. Full project suite and physical Windows acceptance pending.
+
 ## 2026-11-03 Task005 Windows camera pane collapsed follow-up
 
 - Owner's new screenshot shows a one-pixel-thin preview strip between the guidance and data tabs. Video capture was already shown to work in OpenCV compatibility mode; this specifically exposes a native Tk layout/splitter initialization defect, not primarily an image codec problem.
