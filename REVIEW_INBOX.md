@@ -1,3 +1,7 @@
+## OPEN — 2026-11-03 manual NPZ loading and export operator verification
+
+Owner requested explicit load/save NPZ buttons after discovering prior calibration was not selected. Added `L` to load chosen NPZ, live validation and confirmation/persistent SHA-256 selection, and `K` to Save As the current full archive to any chosen destination without switching it. Current NPZ filename and path exposed in UI. Unit and injected integration tests added; owner Windows acceptance and full suite remain outstanding. Keep PR #8 unmerged and do not edit dependent PR topology.
+
 ## OPEN — 2026-11-03 W world-coordinate alignment failed
 
 Owner W screenshot: ID 0..3 show 2D recognition, but `ID 0 corner0 fails stereo geometry` prevents 3D world registration; W frozen-video pane also collapsed. Current PR #8 adds numeric pixel/depth error reporting and deferred W splitter setup, plus tests. Actual root cause remains unknown until measured residuals become visible; do not relax quality gates or mark physical accuracy accepted. Full suite and owner hardware follow-up pending. Do not merge PR #8.
