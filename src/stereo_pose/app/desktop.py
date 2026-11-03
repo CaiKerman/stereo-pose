@@ -6,6 +6,7 @@ to HighGUI. Only resized COPIES reach the display, never the measurement input.
 """
 from __future__ import annotations
 
+import base64
 import os
 import sys
 from collections import deque
@@ -129,6 +130,18 @@ class HighGuiDisplay:
                 pass
 
 
+def encode_tk_png(frame):
+    """Encode OpenCV BGR preview to portable PNG bytes for Tk PhotoImage.
+
+    Base64-encoded PNG avoids the binary PPM path that may render blank with
+    some Windows/Tk builds; no third-party GUI dependencies are needed.
+    """
+    ok, encoded = cv2.imencode('.png', frame, [cv2.IMWRITE_PNG_COMPRESSION, 1])
+    if not ok:
+        raise RuntimeError('could not encode camera preview as PNG')
+    return base64.b64encode(encoded.tobytes())
+
+
 class ImagePair:
     """Aspect-preserving live/frozen pair; only display copies are resized."""
     def __init__(self, parent, tk, ttk):
@@ -136,6 +149,7 @@ class ImagePair:
         self.frame = ttk.Frame(parent)
         self.images = None
         self.photos = [None, None]
+        self.rendered_bounds = [None, None]
         self.cells = []
         self.labels = []
         for name in ['左相机 / LEFT', '右相机 / RIGHT']:
@@ -146,6 +160,8 @@ class ImagePair:
             label.pack(fill='both', expand=True)
             self.cells.append(cell)
             self.labels.append(label)
+            index = len(self.labels) - 1
+            label.bind('<Configure>', lambda event, i=index: self._on_label_resize(i, event))
         self.frame.bind('<Configure>', self._reflow)
 
     def _reflow(self, event=None):
@@ -158,19 +174,29 @@ class ImagePair:
         if self.images is not None:
             self.render(self.images)
 
+    def _on_label_resize(self, index, event):
+        # Parent layout can complete before the video label has real dimensions.
+        # Draw the latest image as soon as the label becomes visible.
+        bounds = (event.width, event.height)
+        if self.images is not None and min(bounds) >= 2 and bounds != self.rendered_bounds[index]:
+            self._render_one(index, self.images[index])
+
+    def _render_one(self, index, image):
+        label = self.labels[index]
+        bounds = (label.winfo_width(), label.winfo_height())
+        if min(bounds) < 2:
+            return
+        size = fit_size((image.shape[1], image.shape[0]), bounds)
+        scaled = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
+        photo = self.tk.PhotoImage(master=label, data=encode_tk_png(scaled), format='png')
+        label.configure(image=photo)
+        self.photos[index] = photo  # Tk needs a live Python reference.
+        self.rendered_bounds[index] = bounds
+
     def render(self, images):
         self.images = images
-        for i, (label, image) in enumerate(zip(self.labels, images)):
-            width, height = max(1,label.winfo_width()), max(1,label.winfo_height())
-            if min(width,height) < 2:
-                continue
-            size = fit_size((image.shape[1],image.shape[0]), (width,height))
-            scaled = cv2.resize(image,size,interpolation=cv2.INTER_AREA)
-            rgb = cv2.cvtColor(scaled,cv2.COLOR_BGR2RGB)
-            data = f'P6\n{size[0]} {size[1]}\n255\n'.encode() + rgb.tobytes()
-            photo = self.tk.PhotoImage(master=label, data=data, format='PPM')
-            label.configure(image=photo)
-            self.photos[i] = photo
+        for index, image in enumerate(images):
+            self._render_one(index, image)
 
 
 def scroll_text(parent, tk, ttk, *, editable=False):
