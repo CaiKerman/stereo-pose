@@ -76,6 +76,18 @@ class TestDisplayContract(unittest.TestCase):
         self.assertIn('假定向上',coordinate_label({'name':'default','metadata':{'mode':'camera_midpoint'}}))
         self.assertIn('轴向保持不变',coordinate_label({'name':'ZERO','metadata':{'mode':'zero'}}))
 
+    def test_loading_saved_npz_is_offered_even_without_active_calibration(self):
+        without=tracking_view([],None,calibrated=False,recording=False,record_status='OFF',
+            smoothing=True,cameras=(1,2),fps='30fps')
+        actions={a.key:a for a in without['actions']}
+        self.assertTrue(actions[ord('l')].enabled)
+        self.assertIn('未加载 NPZ',without['summary'])
+        loaded=tracking_view([],None,calibrated=True,recording=False,record_status='OFF',
+            smoothing=True,cameras=(1,2),fps='30fps',
+            calibration_file='C:/stereo/calibrations/known.npz')
+        self.assertIn('known.npz',loaded['summary'])
+        self.assertIn('known.npz',loaded['details'])
+
     def test_no_calibration_disables_world_and_record_buttons(self):
         view=tracking_view([],None,calibrated=False,recording=False,record_status='OFF',smoothing=True,cameras=(1,2),fps='30fps')
         actions={a.key:a for a in view['actions']}
