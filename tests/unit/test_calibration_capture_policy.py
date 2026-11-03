@@ -15,6 +15,7 @@ import numpy as np
 import cv2
 
 from stereo_pose.calibration.collection import RuntimeCalibration
+from stereo_pose.calibration.correspondence import normalize_stereo_pairs, CornerCorrespondenceError
 
 
 def _calibrator(root: Path) -> RuntimeCalibration:
@@ -368,6 +369,121 @@ class TestCalibrationSolveRegression(unittest.TestCase):
             np.testing.assert_allclose(actual,bundle['R1']@point[0],atol=.1)
             registration,warnings=load_readout_registration(result['path'],(1280,720))
             self.assertFalse(warnings);self.assertEqual(registration['metadata']['mode'],'camera_midpoint')
+
+
+class TestStereoCheckerboardCorrespondence(unittest.TestCase):
+    """Synthetic 9x6 board, different intrinsics and deliberately converged rigs."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.obj = np.zeros((54,3),np.float32)
+        self.obj[:,:2] = np.mgrid[0:9,0:6].T.reshape(-1,2) * 25
+        # Intentionally different focal lengths and an angled 2-camera setup.
+        self.K1 = np.array([[850.,0,625],[0,820,350],[0,0,1]])
+        self.K2 = np.array([[1190.,0,615],[0,1080,340],[0,0,1]])
+        self.D1 = np.array([-.12,.03,0.,0.,0.])
+        self.D2 = np.array([-.18,.06,0.,0.,0.])
+        self.R = cv2.Rodrigues(np.array([.05,.30,.07]))[0]
+        self.T = np.array([-190.,20.,13.])
+
+    def observations(self, reverse=(), n=12, *, repeat=False, seed=5):
+        rng=np.random.default_rng(seed)
+        original_right=[]; left=[]; right=[]
+        for i in range(n):
+            rvec=rng.uniform(-.29,.29,3)
+            trans=np.array([rng.uniform(-150,170),rng.uniform(-110,30),rng.uniform(950,1600)])
+            if repeat:
+                rvec=np.array([.11,-.17,.05])
+                trans=np.array([-25.,-20.,1200.])
+            pose=cv2.Rodrigues(rvec)[0]
+            l=cv2.projectPoints(self.obj,rvec,trans,self.K1,self.D1)[0]
+            rv2=cv2.Rodrigues(self.R@pose)[0]
+            r=cv2.projectPoints(self.obj,rv2,self.R@trans+self.T,self.K2,self.D2)[0]
+            if not repeat:
+                l+=rng.normal(0,.18,l.shape).astype(np.float32)
+                r+=rng.normal(0,.18,r.shape).astype(np.float32)
+            original_right.append(r.copy())
+            left.append(l)
+            right.append(r[::-1].copy() if i in reverse else r.copy())
+        return left,right,original_right
+
+    def test_direct_correspondence_with_different_camera_intrinsics(self):
+        left,right,expected=self.observations()
+        aligned,diag=normalize_stereo_pairs(left,right)
+        self.assertEqual(diag['reversed_count'],0)
+        self.assertEqual(diag['modes'],['direct']*12)
+        self.assertLess(diag['median_sampson_px'],1)
+        for a,b in zip(aligned,expected):
+            np.testing.assert_allclose(a,b,atol=.0001)
+
+    def test_mixed_180_flips_recover_exact_physical_corner_pairs(self):
+        reversals={1,4,8}
+        left,right,expected=self.observations(reverse=reversals)
+        aligned,diag=normalize_stereo_pairs(left,right)
+        self.assertEqual(diag['reversed_count'],len(reversals))
+        self.assertEqual({i for i,mode in enumerate(diag['modes']) if mode=='reversed_180'},reversals)
+        for a,b in zip(aligned,expected):
+            np.testing.assert_allclose(a,b,atol=.0001)
+
+    def test_all_right_cameras_reversed_still_recovers_common_geometry(self):
+        left,right,expected=self.observations(reverse=set(range(12)))
+        aligned,diag=normalize_stereo_pairs(left,right)
+        self.assertEqual(diag['reversed_count'],12)
+        for a,b in zip(aligned,expected):
+            np.testing.assert_allclose(a,b,atol=.0001)
+
+    def test_unrecognized_permutation_or_ambiguous_single_pose_rejected(self):
+        left,right,_=self.observations()
+        invalid=list(right)
+        invalid[5]=np.roll(right[5],8,axis=0)
+        with self.assertRaisesRegex(CornerCorrespondenceError,'第 6 组'):
+            normalize_stereo_pairs(left,invalid)
+        same_left,same_right,_=self.observations(repeat=True)
+        with self.assertRaisesRegex(CornerCorrespondenceError,'对应不可靠'):
+            normalize_stereo_pairs(same_left,same_right)
+
+    def test_twelve_paired_images_solve_with_correction_without_24_requirement(self):
+        from stereo_pose.calibration.package import read_bundle
+        cal=_calibrator(self.root);cal.start()
+        reverse={0,3,7}
+        left,right,_=self.observations(reverse=reverse)
+        for _ in range(12):
+            cal.samples.append({'left':_grid_det(), 'right':_grid_det(dx=-12),
+                                'descriptor':np.zeros(10)})
+        obj=[self.obj.copy() for _ in left]
+        paths=[(self.root/'l.png',self.root/'r.png') for _ in left]
+        with mock.patch.object(cal,'_load_points',return_value=(obj,left,right,paths,(1280,720))):
+            report=cal.solve()
+        self.assertEqual(report['sample_count'],12)
+        self.assertEqual(report['corner_order_reversed_count'],3)
+        self.assertLess(report['sample_epipolar_mean_px'],3)
+        bundle=read_bundle(report['path'])
+        self.assertEqual(int(bundle['corner_order_reversed_count']),3)
+        self.assertEqual(str(bundle['corner_order_modes'][0]),'reversed_180')
+        np.testing.assert_allclose(bundle['T'].reshape(3),self.T,atol=15.0)
+
+    def test_unresolvable_corners_do_not_publish_new_npz(self):
+        cal=_calibrator(self.root);cal.start()
+        left,right,_=self.observations()
+        right[2]=np.roll(right[2],5,axis=0)
+        for _ in left:
+            cal.samples.append({'left':_grid_det(), 'right':_grid_det(dx=-12),
+                                'descriptor':np.zeros(10)})
+        existing=cal.calibration_dir/'auto'/'stereo_existing.npz'
+        existing.parent.mkdir(parents=True,exist_ok=True)
+        existing.write_bytes(b'existing physical calibration')
+        paths=[(self.root/'l.png',self.root/'r.png') for _ in left]
+        with mock.patch.object(cal,'_load_points',return_value=(
+                [self.obj.copy() for _ in left],left,right,paths,(1280,720))):
+            with self.assertRaisesRegex(CornerCorrespondenceError,'第 3 组'):
+                cal.solve()
+        self.assertTrue(cal.active)
+        self.assertEqual(list(existing.parent.glob('*.npz')),[existing])
+        self.assertEqual(existing.read_bytes(),b'existing physical calibration')
+
+
 
 
 if __name__ == "__main__":
