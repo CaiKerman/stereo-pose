@@ -1,3 +1,7 @@
+## OPEN — 2026-11-03 owner-requested C→R stereo checkerboard correspondence repair
+
+Confirmed source-code gap: Task002 metric verification `V` canonicalizes direct vs reversed_180 with known stereo geometry, but Task004/005 NPZ solve `_load_points` and `stereoCalibrate` independently index left/right corners without cross-camera consistency verification. PR #8 now adds pre-solve direct/reversed_180 hypothesis RANSAC, clear ambiguous/invalid rejection, orientation metadata, and fail-before-publish for catastrophic epipolar geometry, retaining 12-pair minimum and arbitrary different camera intrinsics/rig angle. Synthetic local verification and formal new tests are documented in TEST_REPORT; full repo and Windows hardware acceptance remain OPEN. No PR merging or retargeting.
+
 ## OPEN — 2026-11-03 manual NPZ loading and export operator verification
 
 Owner requested explicit load/save NPZ buttons after discovering prior calibration was not selected. Added `L` to load chosen NPZ, live validation and confirmation/persistent SHA-256 selection, and `K` to Save As the current full archive to any chosen destination without switching it. Current NPZ filename and path exposed in UI. Unit and injected integration tests added; owner Windows acceptance and full suite remain outstanding. Keep PR #8 unmerged and do not edit dependent PR topology.
