@@ -62,7 +62,7 @@ class WorldForm:
         self.loading_entries=False
         self._preview_split_initialized=False
         self.root=self.tk.Toplevel(desktop.root)
-        self.root.title('设置坐标系与原点 · 当前画面已冻结')
+        self.root.title('设置坐标系与原点 · 原始画面已冻结（保留完整视野）')
         width,height=initial_size(desktop.root.winfo_screenwidth(),desktop.root.winfo_screenheight(),desktop.scale)
         self.root.geometry(f'{width}x{height}')
         self.root.minsize(min(width,round(520*desktop.scale)),min(height,round(440*desktop.scale)))
@@ -86,7 +86,7 @@ class WorldForm:
         self.pair=ImagePair(self.panes,self.tk,self.ttk);self.panes.add(self.pair.frame,weight=2)
         editor=self.ttk.Frame(self.panes);editor.columnconfigure(0,weight=1);editor.rowconfigure(1,weight=1)
         self.panes.add(editor,weight=3)
-        self.guidance=self.ttk.Label(editor,text='选择一行，在下方填写 X / Y / Z（毫米），点击「更新此点」。至少三个不共线点；只改原点使用第一行。“已识别（2D）”不代表通过双目三维校验。',wraplength=900,padding=(0,6))
+        self.guidance=self.ttk.Label(editor,text='当前显示未经畸变/极线裁切的原始冻结画面，图码位置与主界面一致；三维重建仍在内部执行双目校正。选中一行填写 XYZ（毫米）并更新，至少三个不共线点。“已识别（2D）”不等于通过三维校验。',wraplength=900,padding=(0,6))
         self.guidance.grid(row=0,column=0,columnspan=2,sticky='ew')
         columns=('id','feature_type','X_mm','Y_mm','Z_mm','seen')
         self.tree=self.ttk.Treeview(editor,columns=columns,show='headings',height=4,selectmode='browse')
