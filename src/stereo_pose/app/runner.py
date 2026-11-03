@@ -595,11 +595,13 @@ def _run(args, cfg, resources):
                         destination = display.save_calibration_file(calib_path)
                         if destination:
                             target=Path(destination).expanduser()
-                            if target.is_file() and not display.confirm_npz_overwrite(target):
+                            replace_existing=target.exists()
+                            if replace_existing and not display.confirm_npz_overwrite(target):
                                 display.notify('取消覆盖；原 NPZ 和目标文件均保持不变。')
                             else:
                                 saved=export_calibration_npz(
-                                    calib_path, target, expected_sha256=active_artifact_sha)
+                                    calib_path, target, expected_sha256=active_artifact_sha,
+                                    overwrite=replace_existing)
                                 display.notify(f'已另存完整 NPZ：{saved}；当前使用的标定未改变。')
                                 print(f'[calibration] EXPORTED NPZ: {saved}; active remains {calib_path}')
                     except Exception as error:
