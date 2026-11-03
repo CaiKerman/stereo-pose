@@ -1,3 +1,5 @@
+Task005 acceptance update 2026-11-03: Owner screenshot exposes preview pane collapsed to ~1 pixel on Windows Tk. Same existing PR #8 now includes nonzero preview requested height and first-frame deferred splitter initialization, plus native GUI smoke coverage for collapsed sash. Windows hardware approval remains OPEN. Do not merge.
+
 Task005 UI hardware follow-up (2026-11-03): blank Windows Tk camera preview reported; OpenCV compatibility view works. Presentation-only fix pushed to the same `feat/005-responsive-desktop-ui` branch and PR #8, with pixel-level tests. Full repo tests and owner Windows acceptance remain open; do not merge or change PR topology.
 
 Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
