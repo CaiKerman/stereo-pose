@@ -107,6 +107,25 @@ class TestTrackingLifecycle(unittest.TestCase):
         metadata=json.loads(next((self.root/'recordings').glob('session_*/session.json')).read_text())
         self.assertEqual(metadata['calibration_file'],str(self.cal))
 
+    def test_save_after_loading_another_npz_exports_the_new_active_file(self):
+        selected=synthetic_calibration(self.root/'selected_before_export.npz')
+        backup=self.root/'manual_saved.npz'
+        self.execute([ord('l'),ord('k'),ord('q')],native=True,
+                     selected_npz=str(selected),saved_npz=str(backup))
+        self.assertEqual(backup.read_bytes(),selected.read_bytes())
+        self.assertEqual(load_config(self.args.config)['stereo']['explicit_file'],
+                         str(selected.resolve()))
+
+    def test_confirmed_overwrite_replaces_only_target_copy(self):
+        backup=self.root/'existing_saved.npz'
+        backup.write_bytes(b'old copy')
+        config_before=Path(self.args.config).read_bytes()
+        self.execute([ord('k'),ord('q')],native=True,saved_npz=str(backup),
+                     confirm_save_npz=True)
+        self.display_for_test.confirm_npz_overwrite.assert_called_once()
+        self.assertEqual(backup.read_bytes(),self.cal.read_bytes())
+        self.assertEqual(Path(self.args.config).read_bytes(),config_before)
+
     def test_cancel_save_npz_keeps_current_and_previous_target(self):
         target=self.root/'previous_backup.npz'
         target.write_bytes(b'previous')
