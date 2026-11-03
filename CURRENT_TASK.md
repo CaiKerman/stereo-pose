@@ -1,3 +1,5 @@
+Task005 UI hardware follow-up (2026-11-03): blank Windows Tk camera preview reported; OpenCV compatibility view works. Presentation-only fix pushed to the same `feat/005-responsive-desktop-ui` branch and PR #8, with pixel-level tests. Full repo tests and owner Windows acceptance remain open; do not merge or change PR topology.
+
 Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
 Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
 
