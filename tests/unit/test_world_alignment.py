@@ -11,7 +11,7 @@ import numpy as np
 from stereo_pose.coordinates.rigid import RigidTransform, fit_rigid, relative_origin
 from stereo_pose.calibration.package import (
     read_bundle, load_registration, save_registered, activate_calibration, file_sha256,
-    atomic_npz, export_calibration_npz, file_sha256,
+    atomic_npz, export_calibration_npz,
 )
 from stereo_pose.coordinates.markers import read_references, match_features, detect_markers
 from stereo_pose.geometry import StereoTriangulator
