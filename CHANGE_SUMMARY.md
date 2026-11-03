@@ -1,3 +1,10 @@
+## 2026-11-03 Task005 manual NPZ load and Save As controls
+
+- Added the `L / 加载标定 NPZ` control beside existing calibration controls, letting users pick an existing NPZ in Tk and activate it without restarting. Validation checks required stereo matrices, active capture size, persisted hash, and camera-pair caveats; failures and cancellations leave active state unchanged. Current selected NPZ name appears in the tracking summary, full path in Details.
+- Added `K / 另存标定 NPZ`: select destination folder/name, explicitly confirm overwrites, atomically copy current active NPZ, verify full byte-identical SHA-256, and **do not activate the exported backup**. Existing `P` remains internal auto-backup.
+- Tests cover archive preservation (including W registration), unsafe destination refusal, hash mismatch, atomic failure rollback, loading new NPZ then exporting, overwrite/cancel, and active-state/recording continuity. No numerical geometry or quality threshold changes.
+- Real Windows webcam and full-repository regression remain pending in the GitHub connector editing environment; these cases are committed, not claimed executed.
+
 ## 2026-11-03 W world-coordinate setup: diagnostic and frozen-preview repair
 
 - Fixed: the W modal Tk camera pane was independently suffering from the same early splitter initialization as the main UI; assign a proper frozen-video viewport after first actual native layout, without altering later user drags.
