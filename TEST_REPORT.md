@@ -1,3 +1,9 @@
+## Task005 Windows collapsed preview pane regression — 2026-11-03
+
+Owner screenshot after earlier PNG transport patch shows the camera pane collapsed to a thin splitter (~Y=210), with the coordinates table taking nearly all remaining height. Added layout safeguards in `app/desktop.py`: minimum requested preview-frame height and delayed first-paint sash placement (52% of actual pane height). Added native Tk smoke cases to measure the actual rendered preview/frame label heights in several viewport sizes and recover from a deliberately forced 1-pixel sash.
+
+An isolated Tk/Xvfb sanity check demonstrated `ttk.Panedwindow.sashpos(0,1)` yields an effectively 1-pixel pane and setting a later nonzero position restores it. This is supporting reproduction evidence, not a complete test of the repository GUI. Full project test suite and actual Windows webcam validation still need running. Do not reuse the prior Task005 test counts as proof of this follow-up.
+
 ## Task005 Windows Tk live preview regression — 2026-11-03
 
 Owner reproduced blank native Tk previews; forced `STEREO_POSE_UI=opencv` restores live video. The affected presentation-only path used raw binary PPM through Tk PhotoImage. Fix: PNG/base64 frame transport and redraw after video-label viewport size becomes valid.
