@@ -464,6 +464,27 @@ class TestStereoCheckerboardCorrespondence(unittest.TestCase):
         self.assertEqual(str(bundle['corner_order_modes'][0]),'reversed_180')
         np.testing.assert_allclose(bundle['T'].reshape(3),self.T,atol=30.0)
 
+    def test_catastrophic_rectification_error_cannot_replace_existing_npz(self):
+        cal=_calibrator(self.root);cal.start()
+        left,right,_=self.observations()
+        for _ in left:
+            cal.samples.append({'left':_grid_det(),'right':_grid_det(dx=-12),
+                                'descriptor':np.zeros(10)})
+        existing=cal.calibration_dir/'auto'/'stereo_previous.npz'
+        existing.parent.mkdir(parents=True,exist_ok=True)
+        existing.write_bytes(b'previous validated calibration')
+        paths=[(self.root/'l.png',self.root/'r.png') for _ in left]
+        with (
+            mock.patch.object(cal,'_load_points',return_value=(
+                [self.obj.copy() for _ in left],left,right,paths,(1280,720))),
+            mock.patch.object(cal,'_sample_epipolar_errors',
+                              return_value=np.full(12,3000.0)),
+            self.assertRaisesRegex(ValueError,'未通过几何检查')
+        ):
+            cal.solve()
+        self.assertEqual(list(existing.parent.glob('*.npz')),[existing])
+        self.assertEqual(existing.read_bytes(),b'previous validated calibration')
+
     def test_unresolvable_corners_do_not_publish_new_npz(self):
         cal=_calibrator(self.root);cal.start()
         left,right,_=self.observations()
