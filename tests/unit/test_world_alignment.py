@@ -122,12 +122,21 @@ class TestWorldPackage(unittest.TestCase):
                 self.assertEqual(target.read_bytes(),prior)
                 self.assertFalse(list(self.root.glob('*.tmp')))
 
+    def test_manual_export_refuses_existing_destination_without_permission(self):
+        target=self.root/'my_old_backup.npz'
+        target.write_bytes(b'important previous file')
+        with self.assertRaises(FileExistsError):
+            export_calibration_npz(self.source,target)
+        self.assertEqual(target.read_bytes(),b'important previous file')
+        exported=export_calibration_npz(self.source,target,overwrite=True)
+        self.assertEqual(exported.read_bytes(),self.source.read_bytes())
+
     def test_manual_export_atomic_failure_preserves_old_destination(self):
         target=self.root/'safe.npz'
         target.write_bytes(b'untouched')
         with patch('stereo_pose.calibration.package.os.replace',
                    side_effect=OSError('failed to publish')), self.assertRaises(OSError):
-            export_calibration_npz(self.source,target)
+            export_calibration_npz(self.source,target,overwrite=True)
         self.assertEqual(target.read_bytes(),b'untouched')
         self.assertFalse(list(self.root.glob('*.tmp')))
 
