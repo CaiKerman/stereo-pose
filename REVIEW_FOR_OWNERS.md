@@ -1,3 +1,7 @@
+## 2026-11-03 Task005 Windows preview repair — owner verification required
+
+Owner confirmed blank Tk live preview but normal OpenCV preview with same cameras. PR #8 now includes PNG/base64 image transport and viewport resize redraw, with pixel-level regression tests. Actual owner Windows webcam test is still pending; do not merge PR #8 until verified. The `ID 0 corner0 fails stereo geometry` world alignment error is a separate geometric check; no tolerance/geometry code was changed.
+
 Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
 Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
 
