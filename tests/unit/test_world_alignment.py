@@ -27,6 +27,73 @@ def synthetic_calibration(path, distortion_shape=(1, 5)):
     return path
 
 
+class TestWorldFrozenPreview(unittest.TestCase):
+    def test_raw_preview_keeps_full_frame_and_marker_location(self):
+        from stereo_pose.app.world_setup import raw_frozen_markers
+        left=np.zeros((720,1280,3),dtype=np.uint8)
+        right=np.zeros_like(left)
+        left[:]=[20,33,49]
+        right[:]=[15,55,90]
+        corners=np.array([[550,480],[640,480],[640,570],[550,570]],np.float32)
+        frozen=raw_frozen_markers(left,right,{0:corners},{0:corners+np.array([30,0])})
+        self.assertEqual([x.shape for x in frozen],[left.shape,right.shape])
+        np.testing.assert_array_equal(frozen[0][100,100],left[100,100])
+        np.testing.assert_array_equal(frozen[1][100,100],right[100,100])
+        self.assertGreater(frozen[0][480,600,1],200)  # raw polygon stays at board location
+        self.assertGreater(frozen[1][480,630,1],200)
+        self.assertFalse(np.array_equal(frozen[0],left))
+        np.testing.assert_array_equal(left[480,600],[20,33,49])
+
+    def test_raw_world_axes_project_back_through_rectification_rotation(self):
+        from stereo_pose.app.world_setup import world_axis_pixels_raw
+        from types import SimpleNamespace
+        rotation=cv2.Rodrigues(np.array([.04,-.09,.02]))[0]
+        K=np.array([[1100.,0,630.],[0,1070.,350.],[0,0,1.]])
+        D=np.array([-.05,.006,0.001,0.002,0.])
+        tri=SimpleNamespace(K1=K,D1=D,R1=rotation)
+        offset=np.array([0.,0.,1400.])
+        actual=world_axis_pixels_raw(
+            RigidTransform(np.eye(3),-offset),tri,length=100.,anchor_world=(0.,0.,0.)
+        )
+        points=np.array([[0,0,1400],[100,0,1400],[0,100,1400],[0,0,1500]],float)
+        original=(rotation.T@points.T).T
+        expected=cv2.projectPoints(original,np.zeros(3),np.zeros(3),K,D)[0].reshape(-1,2)
+        np.testing.assert_allclose(actual,expected,atol=1e-8)
+
+    def test_world_setup_never_rectifies_operator_preview_or_reloads_camera(self):
+        from stereo_pose.app.world_setup import run_world_setup
+        from stereo_pose.config import load_config
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            cal=synthetic_calibration(root/'calibration.npz')
+            cfg=load_config(None)
+            cfg['runtime']['root']=str(root)
+            cfg['world']['reference_file']=str(root/'references.csv')
+            left=np.zeros((720,1280,3),np.uint8)
+            right=np.zeros_like(left)
+            left[400:600,500:800]=[15,65,115]
+            right[400:600,470:770]=[25,70,130]
+            corners=np.array([[520.,420.],[600.,420.],[600.,500.],[520.,500.]])
+            detector=lambda frame,dictionary: {0:corners}
+            tri=StereoTriangulator(cal)
+            with (
+                patch('stereo_pose.app.world_setup.cv2.initUndistortRectifyMap',
+                      side_effect=AssertionError('W preview should not rectify')),
+                patch('stereo_pose.app.world_setup._setup_loop',return_value=None) as loop
+            ):
+                result=run_world_setup(
+                    frame_left=left,frame_right=right,triangulator=tri,
+                    calib_path=cal,config_path=root/'config.json',cfg=cfg,
+                    detector=detector
+                )
+            self.assertIsNone(result)
+            frozen_left,frozen_right=loop.call_args.args[0]
+            self.assertEqual(frozen_left.shape,left.shape)
+            self.assertEqual(frozen_right.shape,right.shape)
+            np.testing.assert_array_equal(frozen_left[550,650],left[550,650])
+            np.testing.assert_array_equal(frozen_right[550,650],right[550,650])
+
+
 class TestWorldRigid(unittest.TestCase):
     def setUp(self):
         self.C = np.array([[0, 0, 1000], [100, 0, 1000], [0, 100, 1000], [90, 120, 1100.]])
