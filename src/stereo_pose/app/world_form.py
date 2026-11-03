@@ -60,6 +60,7 @@ class WorldForm:
         self.pending=255;self.closed=False;self.last_zero=False;self.last_report=None
         self.requested_fit=False
         self.loading_entries=False
+        self._preview_split_initialized=False
         self.root=self.tk.Toplevel(desktop.root)
         self.root.title('设置坐标系与原点 · 当前画面已冻结')
         width,height=initial_size(desktop.root.winfo_screenwidth(),desktop.root.winfo_screenheight(),desktop.scale)
@@ -122,7 +123,22 @@ class WorldForm:
         for variable in self.entries.values():
             variable.trace_add('write',self.coordinates_edited)
         self.refresh_rows()
-        self.root.update_idletasks();self.panes.sashpos(0,int(height*.34))
+        self.root.update_idletasks()
+        # Native Tk may discard a sash position set before the window maps.
+        # Initialize after the first real image/frame has been displayed.
+
+    def _initialize_preview_split(self):
+        if self._preview_split_initialized:
+            return
+        height = self.panes.winfo_height()
+        if height < 150:
+            return
+        try:
+            self.panes.sashpos(0, int(height * .40))
+            self.root.update_idletasks()
+            self._preview_split_initialized=True
+        except self.tk.TclError:
+            pass
 
     def reflow(self,event=None):
         width=max(200,self.root.winfo_width()-30)
@@ -223,7 +239,9 @@ class WorldForm:
             else:text=f'预览完成：拟合残差均方根 {report.get("rms_mm", "—")} mm，最大 {report.get("max_mm", "—")} mm。检查方向，再确认 +Z 向上。'
         else:text='填写实测坐标后点击「计算并预览」。完整模式至少三点不共线；原点模式使用第一行。'
         if error not in ('Enter real XYZ in CSV, save it, then R=fit','Review axes/residuals. U confirms world-up; ENTER saves+activates.','Mode changed; press R to fit'):
-            advice=('参考点至少三个，并且不能排成一条直线。' if 'collinear' in str(error) else
+            advice=('图码虽然被左右相机识别，但至少一个角点不能可靠重建三维位置。请看实际像素误差与深度；此窗口为冻结帧，需取消后重拍。'
+                    if '双目几何检查未通过' in str(error) or 'fails stereo geometry' in str(error) else
+                    '参考点至少三个，并且不能排成一条直线。' if 'collinear' in str(error) else
                     '左右画面必须识别到对应编号；核对图码字典，必要时取消并重新冻结画面。' if 'missing/mismatched' in str(error) else
                     '参考点对齐误差过大；核对编号、实测坐标、毫米单位和相机安装。' if 'registration residual' in str(error) else
                     '检查参考点填写与预览步骤。')
@@ -231,7 +249,9 @@ class WorldForm:
         if getattr(self,'dirty',False):text='参考点已修改，请重新计算并预览，不能保存旧结果。'
         self.message.configure(text=text)
         self.pair.render(images)
-        try:self.root.update()
+        try:
+            self.root.update()
+            self._initialize_preview_split()
         except self.tk.TclError:self.closed=True
         key=self.pending;self.pending=255
         if key==255 and self.requested_fit:
