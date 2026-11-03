@@ -86,12 +86,12 @@ class WorldForm:
         self.pair=ImagePair(self.panes,self.tk,self.ttk);self.panes.add(self.pair.frame,weight=2)
         editor=self.ttk.Frame(self.panes);editor.columnconfigure(0,weight=1);editor.rowconfigure(1,weight=1)
         self.panes.add(editor,weight=3)
-        self.guidance=self.ttk.Label(editor,text='选择一行，在下方填写 X / Y / Z（毫米），点击「更新此点」。至少三个不共线点；只改原点使用第一行。',wraplength=900,padding=(0,6))
+        self.guidance=self.ttk.Label(editor,text='选择一行，在下方填写 X / Y / Z（毫米），点击「更新此点」。至少三个不共线点；只改原点使用第一行。“已识别（2D）”不代表通过双目三维校验。',wraplength=900,padding=(0,6))
         self.guidance.grid(row=0,column=0,columnspan=2,sticky='ew')
         columns=('id','feature_type','X_mm','Y_mm','Z_mm','seen')
         self.tree=self.ttk.Treeview(editor,columns=columns,show='headings',height=4,selectmode='browse')
-        for key,label in zip(columns,['编号','特征点','X / mm','Y / mm','Z / mm','双目识别']):
-            self.tree.heading(key,text=label);self.tree.column(key,width=100,minwidth=70)
+        for key,label in zip(columns,['编号','特征点','X / mm','Y / mm','Z / mm','双目二维识别']):
+            self.tree.heading(key,text=label);self.tree.column(key,width=155 if key=='seen' else 100,minwidth=70)
         self.tree.grid(row=1,column=0,sticky='nsew')
         bar=self.ttk.Scrollbar(editor,orient='vertical',command=self.tree.yview);bar.grid(row=1,column=1,sticky='ns')
         horizontal=self.ttk.Scrollbar(editor,orient='horizontal',command=self.tree.xview);horizontal.grid(row=2,column=0,sticky='ew')
@@ -177,7 +177,7 @@ class WorldForm:
         if not selection:return
         index=int(selection[0]);row=self.rows[index]
         for key,var in self.entries.items():row[key]=var.get().strip()
-        self.tree.item(str(index),values=(*[row[k] for k in ('id','feature_type','X_mm','Y_mm','Z_mm')], '成功' if self.recognized(row) else '未识别'))
+        self.tree.item(str(index),values=(*[row[k] for k in ('id','feature_type','X_mm','Y_mm','Z_mm')], '已识别（2D）' if self.recognized(row) else '未识别'))
         self.invalidate()
         self.message.configure(text='参考点已更新。请点击「计算并预览」；未经重新计算不能保存。')
 
