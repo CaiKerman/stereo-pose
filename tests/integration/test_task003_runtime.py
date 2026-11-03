@@ -32,7 +32,7 @@ class TestTrackingLifecycle(unittest.TestCase):
             q=np.c_[xyz,np.ones(17)]@P.T;return q[:,:2]/q[:,2:]
         self.L=proj(self.tri.P1);self.R=proj(self.tri.P2);self.image=np.zeros((720,1280,3),np.uint8)
 
-    def execute(self, keys, calibration_solve=None, world_result=None, native=False, selected_npz=None, confirm_npz=True):
+    def execute(self, keys, calibration_solve=None, world_result=None, native=False, selected_npz=None, confirm_npz=True, saved_npz=None, confirm_save_npz=True):
         from stereo_pose.app.measurements import append_readout
         self.readout_registrations = []
         def draw_readout(canvas, rows, registration, *args, **kwargs):
@@ -66,6 +66,8 @@ class TestTrackingLifecycle(unittest.TestCase):
             display.show.side_effect=keys
             display.choose_calibration_file.return_value=selected_npz
             display.confirm_calibration_file.return_value=confirm_npz
+            display.save_calibration_file.return_value=saved_npz
+            display.confirm_npz_overwrite.return_value=confirm_save_npz
             self.display_for_test=display
         count={'i':0};clock={'t':0}
         def pair(*a,**kw):
@@ -92,6 +94,34 @@ class TestTrackingLifecycle(unittest.TestCase):
         self.assertEqual(read.call_count,len(keys));self.assertEqual(estimator.infer_pair.call_count,len(keys)-calibrator.process.call_count)
         self.assertEqual(camera.release.call_count,2);publisher.close.assert_called_once()
         return publisher,wizard
+
+    def test_save_npz_button_exports_exact_archive_without_switching(self):
+        destination=self.root/'exported_archive.npz'
+        config_before=Path(self.args.config).read_bytes()
+        original=self.cal.read_bytes()
+        self.execute([ord('k'),ord('t'),0,ord('q')],native=True,saved_npz=str(destination))
+        self.assertEqual(destination.read_bytes(),original)
+        self.assertEqual(self.cal.read_bytes(),original)
+        self.assertEqual(Path(self.args.config).read_bytes(),config_before)
+        self.assertIn('未改变',str(self.display_for_test.notify.call_args.args[0]))
+        metadata=json.loads(next((self.root/'recordings').glob('session_*/session.json')).read_text())
+        self.assertEqual(metadata['calibration_file'],str(self.cal))
+
+    def test_cancel_save_npz_keeps_current_and_previous_target(self):
+        target=self.root/'previous_backup.npz'
+        target.write_bytes(b'previous')
+        original=Path(self.args.config).read_bytes()
+        self.execute([ord('k'),ord('q')],native=True,saved_npz=str(target),
+                     confirm_save_npz=False)
+        self.assertEqual(target.read_bytes(),b'previous')
+        self.assertEqual(Path(self.args.config).read_bytes(),original)
+        self.display_for_test.confirm_npz_overwrite.assert_called_once()
+
+    def test_cancel_save_npz_dialog_does_not_export(self):
+        original=Path(self.args.config).read_bytes()
+        self.execute([ord('k'),ord('q')],native=True,saved_npz=None)
+        self.assertEqual(Path(self.args.config).read_bytes(),original)
+        self.display_for_test.confirm_npz_overwrite.assert_not_called()
 
     def test_select_saved_npz_activates_exact_file_and_updates_live_status(self):
         selected=synthetic_calibration(self.root/'saved_selection.npz')
