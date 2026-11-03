@@ -129,6 +129,37 @@ def _capture_image_size(left, right, requested):
     return _size(left) or _size(right) or (int(requested[0]), int(requested[1]))
 
 
+def inspect_npz_for_live_load(path, active_size, *, board, fps, camera_indexes):
+    """Validate an operator-selected NPZ without altering running state/config.
+
+    A saved NPZ is tied to capture resolution and physical LEFT/RIGHT rig.
+    Resolution mismatch is a hard failure; index/FPS/board caveats are surfaced
+    to the operator for explicit confirmation. The file is never rewritten.
+    """
+    candidate = Path(path).expanduser().resolve()
+    if candidate.suffix.lower() != '.npz' or not candidate.is_file():
+        raise ValueError('请选择已经存在的 .npz 双目标定文件')
+    bundle = read_bundle(candidate)
+    validate_stereo_bundle(bundle)
+    if 'image_size' not in bundle:
+        raise ValueError('NPZ 缺少 image_size，无法核对双摄分辨率；请重新标定或选择包含尺寸信息的文件')
+    size = np.asarray(bundle['image_size']).reshape(-1)
+    if size.size != 2 or not np.all(np.isfinite(size)) or np.any(size <= 0) or np.any(size != np.round(size)):
+        raise ValueError('NPZ 中 image_size 无效，不能安全加载')
+    image_size = tuple(int(v) for v in size)
+    if image_size != tuple(active_size):
+        raise ValueError(
+            f'NPZ 标定分辨率 {image_size} 与当前双摄分辨率 {tuple(active_size)} 不一致；'
+            '拒绝加载。请使用匹配的原始摄像头分辨率或重新标定。'
+        )
+    tri = StereoTriangulator(candidate)
+    registration, world_warnings = load_readout_registration(candidate, active_size)
+    warnings = validate_calibration_compatibility(candidate, active_size, board, fps)
+    warnings.extend(camera_identity_warnings(candidate, camera_indexes[0], camera_indexes[1]))
+    warnings.extend(world_warnings)
+    return candidate, tri, registration, warnings, file_sha256(candidate)
+
+
 def _actual_fps(cap):
     try:
         v = cap.get(cv2.CAP_PROP_FPS)
@@ -545,7 +576,7 @@ def _run(args, cfg, resources):
                     readout_rows, registration, calibrated=triangulator is not None,
                     recording=recorder.active, record_status=recorder.status(), smoothing=smoother.enabled,
                     cameras=(c['left'],c['right']), fps=fps_txt, details=menu_lines,
-                    warnings=alarms+world_warnings))
+                    warnings=alarms+world_warnings, calibration_file=calib_path))
             else:
                 overlay_status(canvas, menu_lines)
                 canvas = append_readout(canvas, readout_rows, registration, recorder.status(), world_warnings=world_warnings)
@@ -554,6 +585,42 @@ def _run(args, cfg, resources):
             if key in (ord("c"), ord("C")):
                 recorder.stop("enter_calibration")
                 calibrator.start()
+            elif key in (ord("l"), ord("L")):
+                if not display.native:
+                    print('[calibration] 兼容模式请在 config.json 中设置 stereo.load=explicit 与 stereo.explicit_file，再重启')
+                else:
+                    try:
+                        chosen = display.choose_calibration_file(
+                            initialdir=Path(calib_path).parent if calib_path else Path(s['calibration_dir']))
+                        if chosen:
+                            candidate_path, candidate_tri, candidate_reg, warnings, candidate_sha = (
+                                inspect_npz_for_live_load(
+                                    chosen, active_size,
+                                    board=(s['board_cols'], s['board_rows']),
+                                    fps=float(c['fps']) if c.get('fps') else None,
+                                    camera_indexes=(c['left'], c['right']),
+                                )
+                            )
+                            if display.confirm_calibration_file(candidate_path, warnings):
+                                # Durable selection first; a validation or config write
+                                # failure leaves the running calibration untouched.
+                                selection = activate_calibration(args.config, candidate_path)
+                                recorder.stop('calibration_switched')
+                                s.update(selection)
+                                calib_path = candidate_path
+                                triangulator = candidate_tri
+                                registration = candidate_reg
+                                world_warnings = list(warnings)
+                                active_artifact_sha = candidate_sha
+                                smoother.reset()
+                                speed_gate.reset()
+                                display.notify(f'已加载并启用 NPZ：{candidate_path.name}')
+                                print(f'[calibration] SELECTED NPZ: {candidate_path}; SHA-256={candidate_sha}')
+                            else:
+                                display.notify('已取消切换 NPZ；当前标定未改变。')
+                    except Exception as error:
+                        display.notify(f'加载 NPZ 失败，原标定保持不变：{error}')
+                        print('[calibration] NPZ load rejected; previous calibration retained:', error)
             elif key in (ord("f"), ord("F")):
                 recorder.stop("filter_changed")
                 enabled = smoother.toggle()
