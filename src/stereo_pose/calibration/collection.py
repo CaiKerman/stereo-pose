@@ -441,7 +441,20 @@ class RuntimeCalibration:
         # opposite (180-degree) physical corner orders. Never send unmatched
         # index pairs to stereoCalibrate: reconcile on raw stereo geometry first.
         # This does not use matching intrinsics, parallel cameras, or square_mm.
-        img_r, corner_alignment = normalize_stereo_pairs(img_l, img_r)
+        img_r, corner_alignment = normalize_stereo_pairs(
+            img_l, img_r, min_good_pairs=self.min_pairs
+        )
+        accepted_indices = corner_alignment["accepted_indices"]
+        rejected_indices = corner_alignment["rejected_indices"]
+        if rejected_indices:
+            objpoints = [objpoints[i] for i in accepted_indices]
+            img_l = [img_l[i] for i in accepted_indices]
+            paths = [paths[i] for i in accepted_indices]
+            print(
+                f'[calibration] rejected {len(rejected_indices)} ambiguous '
+                f'correspondence pair(s), 1-based indices: '
+                f'{[i+1 for i in rejected_indices]}'
+            )
         corner_modes = list(corner_alignment["modes"])
         print(
             f'[calibration] corner correspondence: '
@@ -463,7 +476,7 @@ class RuntimeCalibration:
             bad_order = [int(i) for i in np.argsort(epi)[::-1] if epi[i] > cutoff]
             max_prune = min(
                 int(math.floor(initial_count * self.max_prune_fraction)),
-                initial_count - self.min_pairs,
+                len(epi) - self.min_pairs,
             )
             bad = set(bad_order[:max(0, max_prune)])
 
@@ -519,6 +532,7 @@ class RuntimeCalibration:
             "sample_epipolar_mean_px": np.array(epi_mean),
             "sample_epipolar_max_px": np.array(epi_max),
             "corner_order_modes": np.asarray(corner_modes, dtype=str),
+            "corner_order_rejected_indices": np.asarray(rejected_indices, dtype=np.int32),
             "corner_order_reversed_count": np.array(corner_modes.count("reversed_180")),
             "corner_order_sampson_median_px": np.array(corner_alignment["median_sampson_px"]),
             "readiness": np.array(self.readiness()),
@@ -538,6 +552,7 @@ class RuntimeCalibration:
             "sample_epipolar_mean_px": epi_mean,
             "sample_epipolar_max_px": epi_max,
             "corner_order_modes": corner_modes,
+            "corner_order_rejected_indices": rejected_indices,
             "corner_order_reversed_count": corner_modes.count("reversed_180"),
             "corner_order_sampson_median_px": corner_alignment["median_sampson_px"],
             "readiness": self.readiness(),
