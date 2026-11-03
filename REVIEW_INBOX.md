@@ -1,3 +1,7 @@
+## OPEN — 2026-11-03 second Task005 Windows GUI acceptance
+
+Owner screenshot confirms main camera viewport collapsed to a thin horizontal strip above the data tabs. New UI-only layout patch pushed to existing PR #8, with a native smoke test forcing a one-pixel splitter and verifying recovery, plus normal resolution/mode visibility assertions. Wait for actual Windows video validation and full test suite; do not merge or retarget PR.
+
 ## OPEN — 2026-11-03 Windows Tk camera preview hardware acceptance
 
 Owner reported native Tk GUI lacks camera imagery while `STEREO_POSE_UI=opencv` succeeds. Existing Task005 PR #8 carries a PNG/base64 + viewport redraw repair and new tests. Pending: rerun full checkout regressions and validate real Windows left/right live previews including C/W/resize. Preserve PR topology and original measurement modules.
