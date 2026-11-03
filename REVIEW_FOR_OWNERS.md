@@ -1,3 +1,7 @@
+## 2026-11-03 second Task005 hardware finding: preview pane collapsed
+
+Owner's supplied Tk screenshot has no camera area because the video pane is reduced to a thin line above the coordinate tabs. Corrective GUI-only patch declares an initial preview height and initializes the splitter once after first native paint; native smoke tests now assert actual pane/label dimensions and recovery from a 1-pixel sash. Initial manual workaround: drag the horizontal divider between guidance and tabs downward. Windows owner acceptance remains blocking for PR #8; do not merge without confirming live video and resized layouts on the actual machine. No stereo/quality/world registration changes.
+
 ## 2026-11-03 Task005 Windows preview repair — owner verification required
 
 Owner confirmed blank Tk live preview but normal OpenCV preview with same cameras. PR #8 now includes PNG/base64 image transport and viewport resize redraw, with pixel-level regression tests. Actual owner Windows webcam test is still pending; do not merge PR #8 until verified. The `ID 0 corner0 fails stereo geometry` world alignment error is a separate geometric check; no tolerance/geometry code was changed.
