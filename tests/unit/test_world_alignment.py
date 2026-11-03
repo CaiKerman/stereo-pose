@@ -3,7 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import cv2
 import numpy as np
@@ -154,6 +154,32 @@ class TestWorldPackage(unittest.TestCase):
 
 
 class TestMarkerCorrespondence(unittest.TestCase):
+    def test_stereo_corner_rejection_shows_actual_quality_metrics(self):
+        refs=[{'dictionary':'DICT_4X4_50','id':0,'feature_type':'center','xyz_mm':[0,0,0]}]
+        observed={0:np.zeros((4,2))}
+        cases=[
+            (None,'三角化失败'),
+            ({'xyz_mm':np.array([10.,20.,1000.]),'epipolar_error_px':7.25,
+              'reprojection_error_max_px':4.5},'极线误差超限'),
+            ({'xyz_mm':np.array([10.,20.,-100.]),'epipolar_error_px':0.5,
+              'reprojection_error_max_px':1.0},'相机深度必须大于0'),
+            ({'xyz_mm':np.array([10.,20.,1000.]),'epipolar_error_px':0.5,
+              'reprojection_error_max_px':4.5},'重投影误差超限'),
+        ]
+        for result,reason in cases:
+            with self.subTest(reason=reason):
+                tri=Mock();tri.triangulate_with_quality.return_value=result
+                with self.assertRaises(ValueError) as cm:
+                    match_features(refs,observed,observed,tri,'DICT_4X4_50',3,2.5)
+                message=str(cm.exception)
+                self.assertIn('ID 0 corner0',message)
+                self.assertIn(reason,message)
+                self.assertIn('上限 3px',message)
+                self.assertIn('上限 2.5px',message)
+                self.assertIn('冻结',message)
+                if result is not None:
+                    self.assertIn('1000.00mm' if result['xyz_mm'][2]==1000. else '-100.00mm',message)
+
     def test_reference_csv_explicit_types_duplicates_invalid(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'r.csv'
