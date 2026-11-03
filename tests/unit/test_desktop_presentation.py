@@ -1,4 +1,5 @@
 """Offline UI semantics and display dimensions; no Tk/camera/GPU required."""
+import base64
 import copy
 import csv
 import tempfile
@@ -8,14 +9,28 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
+import cv2
 
 from stereo_pose.app.presentation import (Action, PendingAction, fit_size, initial_size,
     readout_cells, tracking_view, calibration_view, coordinate_label)
-from stereo_pose.app.desktop import create_display, HighGuiDisplay
+from stereo_pose.app.desktop import create_display, HighGuiDisplay, encode_tk_png
 from stereo_pose.app.world_form import save_form_rows, load_form_rows
 
 
 class TestDisplayContract(unittest.TestCase):
+    def test_tk_png_preview_roundtrip_preserves_bgr_pixels(self):
+        frame = np.zeros((36,64,3),dtype=np.uint8)
+        frame[:] = [15,75,230]
+        encoded = encode_tk_png(frame)
+        decoded = cv2.imdecode(np.frombuffer(base64.b64decode(encoded),dtype=np.uint8),
+                               cv2.IMREAD_COLOR)
+        np.testing.assert_array_equal(decoded, frame)
+
+    def test_tk_png_encoding_failure_reports_error(self):
+        with patch('stereo_pose.app.desktop.cv2.imencode',return_value=(False,None)):
+            with self.assertRaisesRegex(RuntimeError,'encode camera preview'):
+                encode_tk_png(np.zeros((4,4,3),np.uint8))
+
     def test_fit_preserves_whole_image_for_common_and_portrait_screens(self):
         for screen in [(800,600),(1024,768),(1366,768),(1920,1080),(3840,2160),(600,900)]:
             with self.subTest(screen=screen):
