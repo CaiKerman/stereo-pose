@@ -1,3 +1,5 @@
+Additional isolated algorithm verification: 12 total/1 scrambled frame rejected (only 11 valid); 16 total/1 scrambled frame accepted 15 trusted pairs, with the 3rd frame explicitly identified as rejected. Formal repo regression for 16→15 and metadata has been committed; full checkout execution is still pending.
+
 ## 2026-11-03 Checkerboard corner correspondence fix — verification scope
 
 Reason: `C -> R` independently re-ran `cv2.findChessboardCornersSB` on each camera and paired `cl[k]` with `cr[k]` without a stereo correspondence reconciliation; `V` metric validation already had direct/reversed_180 normalization, but the real NPZ solver did not. Owner produced an NPZ with catastrophic sample epipolar errors and unusable rectification. This code remedies the correspondence gap, NOT proof that the previous NPZ was caused by it.
