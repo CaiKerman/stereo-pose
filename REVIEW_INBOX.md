@@ -1,3 +1,7 @@
+## OPEN — 2026-11-03 W rectification preview hides targets
+
+Owner reports ArUco codes clearly present in live LEFT/RIGHT camera images but absent in W frozen modal: root cause the modal intentionally rectified the full images with a large-crop NPZ. PR #8 now shows full uncropped original frozen frames, draws original-corner IDs and projects fitted XYZ axes back to original left pixels; triangulation geometry and quality gates unchanged. Added regression tests, still require full suite and owner Windows UI acceptance.
+
 Status note: after initial implementation, invalid-pair filtering was added for sample sets larger than the original 12-pair minimum. Review it alongside the new `corner_order_rejected_indices` NPZ field and regression case; no 24-pair minimum added.
 
 ## OPEN — 2026-11-03 owner-requested C→R stereo checkerboard correspondence repair
