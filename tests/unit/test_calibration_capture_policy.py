@@ -464,6 +464,25 @@ class TestStereoCheckerboardCorrespondence(unittest.TestCase):
         self.assertEqual(str(bundle['corner_order_modes'][0]),'reversed_180')
         np.testing.assert_allclose(bundle['T'].reshape(3),self.T,atol=30.0)
 
+    def test_extra_bad_frame_is_omitted_when_twelve_good_pairs_remain(self):
+        from stereo_pose.calibration.package import read_bundle
+        cal=_calibrator(self.root);cal.start()
+        left,right,_=self.observations(n=16)
+        right[2]=np.roll(right[2],5,axis=0)
+        for _ in left:
+            cal.samples.append({'left':_grid_det(),'right':_grid_det(dx=-12),
+                                'descriptor':np.zeros(10)})
+        paths=[(self.root/'l.png',self.root/'r.png') for _ in left]
+        with mock.patch.object(cal,'_load_points',return_value=(
+                [self.obj.copy() for _ in left],left,right,paths,(1280,720))):
+            report=cal.solve()
+        self.assertEqual(report['sample_count'],15)
+        self.assertEqual(report['corner_order_rejected_indices'],[2])
+        self.assertLess(report['sample_epipolar_mean_px'],3)
+        bundle=read_bundle(report['path'])
+        self.assertEqual(bundle['corner_order_rejected_indices'].tolist(),[2])
+        self.assertEqual(len(bundle['corner_order_modes']),15)
+
     def test_catastrophic_rectification_error_cannot_replace_existing_npz(self):
         cal=_calibrator(self.root);cal.start()
         left,right,_=self.observations()
