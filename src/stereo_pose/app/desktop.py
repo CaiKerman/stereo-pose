@@ -146,7 +146,9 @@ class ImagePair:
     """Aspect-preserving live/frozen pair; only display copies are resized."""
     def __init__(self, parent, tk, ttk):
         self.tk = tk
-        self.frame = ttk.Frame(parent)
+        # Without a requested height the video pane can start at 1 pixel on
+        # Windows Tk, even though the image renderer receives live frames.
+        self.frame = ttk.Frame(parent, height=180)
         self.images = None
         self.photos = [None, None]
         self.rendered_bounds = [None, None]
@@ -236,6 +238,7 @@ class DesktopDisplay:
         self.pending = PendingAction()
         self.notice = ''
         self.mode = None
+        self._preview_split_initialized = False
         self.button_signature = None
         self.buttons=[]
         style=ttk.Style(self.root)
@@ -298,7 +301,26 @@ class DesktopDisplay:
         self.root.bind('<Configure>',self._wrap_info)
         self.root.bind('<KeyPress>',self._keyboard)
         self.root.update_idletasks()
-        self.panes.sashpos(0,int(height*.46))
+        # Initial sash placement is deferred until the first real frame: Tk can
+        # replace an eager sash position during native window layout.
+
+    def _initialize_preview_split(self):
+        """Allocate visible height to the cameras after native layout settles.
+
+        Run once only; subsequent splitter changes belong to the operator.
+        Both the camera view and the data table remain resizable.
+        """
+        if self._preview_split_initialized:
+            return
+        pane_height = self.panes.winfo_height()
+        if pane_height < 180:
+            return
+        try:
+            self.panes.sashpos(0, int(pane_height * .52))
+            self.root.update_idletasks()
+            self._preview_split_initialized = True
+        except self.tk.TclError:
+            pass
 
     def _request_close(self):
         self.closed=True
@@ -382,7 +404,9 @@ class DesktopDisplay:
         for item,values in zip(children,cells):self.tree.item(item,values=values,tags=('ok' if values[4]=='有效' else 'bad',))
         for item in children[len(cells):]:self.tree.delete(item)
         self.pair.render(pair)
-        try:self.root.update()
+        try:
+            self.root.update()
+            self._initialize_preview_split()
         except self.tk.TclError:self.closed=True
         return ord('q') if self.closed else self.pending.take()
 
