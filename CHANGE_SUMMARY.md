@@ -1,3 +1,11 @@
+## 2026-11-03 W dialog raw full-frame preview fix (owner screenshot)
+
+- Root cause in `src/stereo_pose/app/world_setup.py`: frozen W operator preview called `initUndistortRectifyMap` and `remap` with active NPZ, where rectified P1/P2 can zoom/crop almost the whole ArUco target out of the frame. This is a presentation defect separate from ArUco detection and 3D quality thresholds.
+- W now freezes the unchanged original LEFT/RIGHT camera FOV and draws detected ArUco corners/IDs in **original raw pixel coordinates**. No cropping or zooming remap on the preview. The existing marker detection and triangulation still use raw 2D corners with on-demand internal stereo rectification; all measurements, quality thresholds and saved NPZ semantics remain unchanged.
+- A fitted world frame's XYZ axis overlay is projected from the rectified-left 3D frame back into the raw LEFT image via R1 transpose, K1 and D1, keeping overlays physically aligned after this preview change.
+- Native Tk W title and guidance explicitly label preview as an uncropped original frozen frame.
+- Added deterministic raw pixels/frame shape/marker position, raw XYZ projection, and W startup no-remap regressions. Full repository suite and Windows hardware acceptance remain pending.
+
 Checkerboard correspondence follow-up: when the initial sample set exceeds `min_pairs_to_solve`, individual geometrically ambiguous pairs are excluded from the solve rather than forcing the entire attempt to fail; the NPZ/result records original 0-based `corner_order_rejected_indices` and the console reports human 1-based sample numbers. With 12 samples, all 12 must be trustworthy; with 16 samples and one bad pair, 15 may continue. No fixed 24 requirement. Existing robust pruning capacity is calculated from the remaining accepted samples. OpenCV fundamental solver exceptions are converted to actionable calibration diagnostics. An additional regression checks 16→15 valid frames, report and NPZ metadata.
 
 ## 2026-11-03 Task005 owner-approved checkerboard correspondence repair (PR #8)
