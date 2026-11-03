@@ -100,6 +100,16 @@ class NativeSmoke(unittest.TestCase):
         self.ui.show(pair=(newer,self.image),view=self.view)
         self.assertEqual(tuple(self.ui.pair.photos[0].get(3,3)),(238,140,12))
 
+    def test_manual_npz_load_and_save_actions_dispatch_from_real_buttons(self):
+        actions={a.key:a for a in self.view['actions']}
+        self.assertTrue(actions[ord('l')].enabled)
+        self.assertTrue(actions[ord('k')].enabled)
+        for key in (ord('l'),ord('k')):
+            self.ui.show(pair=(self.image,self.image),view=self.view)
+            button=next(b for a,b in zip(self.view['actions'],self.ui.buttons) if a.key==key)
+            button.invoke()
+            self.assertEqual(self.ui.show(pair=(self.image,self.image),view=self.view),key)
+
     def test_button_and_keyboard_dispatch_once(self):
         self.ui.buttons[0].invoke()
         self.assertEqual(self.ui.show(pair=(self.image,self.image),view=self.view),ord('c'))
