@@ -1,3 +1,10 @@
+## 2026-11-03 Task005 Windows camera pane collapsed follow-up
+
+- Owner's new screenshot shows a one-pixel-thin preview strip between the guidance and data tabs. Video capture was already shown to work in OpenCV compatibility mode; this specifically exposes a native Tk layout/splitter initialization defect, not primarily an image codec problem.
+- Native `ImagePair` frame now declares a nonzero requested starting height. `DesktopDisplay` defers initial camera/data splitter positioning until the first Tk update has laid out the actual window; a one-time initial placement preserves user control of subsequent dragging.
+- Native GUI smoke now checks real video pane and image label heights across common resolutions and mode changes, and explicitly forces the sash to one pixel before a first-paint recovery check. No camera math, NPZ, thresholds, video capture, or output protocols changed.
+- Hardware validation is outstanding on Windows; this is a code repair with unverified real-device acceptance.
+
 ## 2026-11-03 Task005 Windows blank camera preview follow-up (PR #8)
 
 - Fix: native Tk live camera previews now use OpenCV PNG encoding transported to Tk PhotoImage as base64, instead of raw binary PPM.
