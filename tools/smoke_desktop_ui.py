@@ -54,6 +54,16 @@ class NativeSmoke(unittest.TestCase):
                     self.assertIsNotNone(photo)
                     self.assertLessEqual(abs(photo.width()-photo.height()*640/360),2)
 
+    def test_first_paint_recovers_collapsed_camera_sash(self):
+        # Reproduce the actual reported state (a 1-pixel camera pane).
+        self.ui.panes.sashpos(0,1)
+        self.ui.root.update_idletasks()
+        self.assertLess(self.ui.pair.frame.winfo_height(), 80)
+        self.ui._preview_split_initialized=False  # emulate first native paint
+        self.ui.show(pair=(self.image,self.image),view=self.view)
+        self.assertGreater(self.ui.pair.frame.winfo_height(), 80)
+        self.assertGreater(self.ui.pair.labels[0].winfo_height(), 20)
+
     def test_camera_viewport_starts_visible_and_survives_mode_changes(self):
         # Regression for owner Windows screenshot: live video pane was only a
         # thin strip above the coordinate table, despite valid camera frames.
