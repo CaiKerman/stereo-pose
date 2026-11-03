@@ -11,7 +11,7 @@ import numpy as np
 from stereo_pose.coordinates.rigid import RigidTransform, fit_rigid, relative_origin
 from stereo_pose.calibration.package import (
     read_bundle, load_registration, save_registered, activate_calibration, file_sha256,
-    atomic_npz,
+    atomic_npz, export_calibration_npz, file_sha256,
 )
 from stereo_pose.coordinates.markers import read_references, match_features, detect_markers
 from stereo_pose.geometry import StereoTriangulator
@@ -94,6 +94,42 @@ class TestWorldPackage(unittest.TestCase):
         self.assertNotEqual(self.save(), self.save())
         synthetic_calibration(self.source)
         self.assertEqual(original, self.source.read_bytes())
+
+    def test_manual_export_copies_exact_full_world_npz_without_mutating_source(self):
+        source=self.save()
+        before=source.read_bytes()
+        exported=export_calibration_npz(source,self.root/'world_backup.npz',
+            expected_sha256=file_sha256(source))
+        self.assertEqual(exported.read_bytes(),before)
+        self.assertEqual(source.read_bytes(),before)
+        active,_=load_registration(exported)
+        self.assertEqual(active['name'],'TEST WORLD')
+        self.assertEqual(file_sha256(exported),file_sha256(source))
+
+    def test_manual_export_rejects_invalid_destination_and_hash_mismatch(self):
+        target=self.root/'safe.npz'
+        target.write_bytes(b'prior user backup')
+        prior=target.read_bytes()
+        for destination,expected in [
+            (self.source,'none'),
+            (self.root/'wrong.txt',None),
+            (target,'f'*64),
+        ]:
+            with self.subTest(destination=destination,expected=expected):
+                with self.assertRaises(ValueError):
+                    export_calibration_npz(self.source,destination,
+                        expected_sha256=expected)
+                self.assertEqual(target.read_bytes(),prior)
+                self.assertFalse(list(self.root.glob('*.tmp')))
+
+    def test_manual_export_atomic_failure_preserves_old_destination(self):
+        target=self.root/'safe.npz'
+        target.write_bytes(b'untouched')
+        with patch('stereo_pose.calibration.package.os.replace',
+                   side_effect=OSError('failed to publish')), self.assertRaises(OSError):
+            export_calibration_npz(self.source,target)
+        self.assertEqual(target.read_bytes(),b'untouched')
+        self.assertFalse(list(self.root.glob('*.tmp')))
 
     def test_geometry_tamper_invalidates_world(self):
         p=self.save(); b=read_bundle(p); b['K1'][0,0]+=1; np.savez(p, **b)
