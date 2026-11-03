@@ -1,3 +1,11 @@
+## 2026-11-03 W raw frozen preview
+
+The latest owner photo showed reference markers visible in the main live camera images yet disappearing from the W modal preview, caused by `cv2.remap` rectification of the entire frozen frames with a high-zoom/cropping NPZ. The display previously drew marker outlines in rectified coordinates, meaning markers could be outside the preview. Change W only: show uncropped raw sensor images and draw markers there; continue to apply rectification only in existing per-point stereo XYZ triangulation.
+
+Committed tests in `tests/unit/test_world_alignment.py`: raw full-resolution preview preserves original camera pixels and draws polygons at the source location; fitted XYZ axes correctly project into raw left pixels under a non-identity R1 and distortion; W setup does not invoke `initUndistortRectifyMap`, and passes unchanged full frames to the dialog.
+
+Test execution status: no full private checkout or Windows webcam runtime access in connector environment; tests committed, not claimed passed. Owner should verify marker board visible in W near bottom of the unchanged original FOV; try R, observe the **separate** geometric acceptance diagnostics. Do not treat display repair as evidence that >3px epipolar rejection is an intrinsic camera limit.
+
 Additional isolated algorithm verification: 12 total/1 scrambled frame rejected (only 11 valid); 16 total/1 scrambled frame accepted 15 trusted pairs, with the 3rd frame explicitly identified as rejected. Formal repo regression for 16→15 and metadata has been committed; full checkout execution is still pending.
 
 ## 2026-11-03 Checkerboard corner correspondence fix — verification scope
