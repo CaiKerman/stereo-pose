@@ -1,3 +1,10 @@
+## 2026-11-03 Task005 Windows blank camera preview follow-up (PR #8)
+
+- Fix: native Tk live camera previews now use OpenCV PNG encoding transported to Tk PhotoImage as base64, instead of raw binary PPM.
+- Fix: redraw the cached current frame after a video label first obtains a nonzero viewport on resize/layout.
+- Tests: add PNG pixel/encoding-failure unit tests and a native Tk two-camera live-pixel/next-frame/resize regression.
+- Kept unchanged: camera capture, detection, stereo geometry, world fit, quality thresholds, NPZ, CSV and protocol behavior. Real Windows acceptance remains pending.
+
 Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
 Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
 
