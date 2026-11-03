@@ -1,3 +1,42 @@
+## OPEN — 2026-11-03 W rectification preview hides targets
+
+Owner reports ArUco codes clearly present in live LEFT/RIGHT camera images but absent in W frozen modal: root cause the modal intentionally rectified the full images with a large-crop NPZ. PR #8 now shows full uncropped original frozen frames, draws original-corner IDs and projects fitted XYZ axes back to original left pixels; triangulation geometry and quality gates unchanged. Added regression tests, still require full suite and owner Windows UI acceptance.
+
+Status note: after initial implementation, invalid-pair filtering was added for sample sets larger than the original 12-pair minimum. Review it alongside the new `corner_order_rejected_indices` NPZ field and regression case; no 24-pair minimum added.
+
+## OPEN — 2026-11-03 owner-requested C→R stereo checkerboard correspondence repair
+
+Confirmed source-code gap: Task002 metric verification `V` canonicalizes direct vs reversed_180 with known stereo geometry, but Task004/005 NPZ solve `_load_points` and `stereoCalibrate` independently index left/right corners without cross-camera consistency verification. PR #8 now adds pre-solve direct/reversed_180 hypothesis RANSAC, clear ambiguous/invalid rejection, orientation metadata, and fail-before-publish for catastrophic epipolar geometry, retaining 12-pair minimum and arbitrary different camera intrinsics/rig angle. Synthetic local verification and formal new tests are documented in TEST_REPORT; full repo and Windows hardware acceptance remain OPEN. No PR merging or retargeting.
+
+## OPEN — 2026-11-03 manual NPZ loading and export operator verification
+
+Owner requested explicit load/save NPZ buttons after discovering prior calibration was not selected. Added `L` to load chosen NPZ, live validation and confirmation/persistent SHA-256 selection, and `K` to Save As the current full archive to any chosen destination without switching it. Current NPZ filename and path exposed in UI. Unit and injected integration tests added; owner Windows acceptance and full suite remain outstanding. Keep PR #8 unmerged and do not edit dependent PR topology.
+
+## OPEN — 2026-11-03 W world-coordinate alignment failed
+
+Owner W screenshot: ID 0..3 show 2D recognition, but `ID 0 corner0 fails stereo geometry` prevents 3D world registration; W frozen-video pane also collapsed. Current PR #8 adds numeric pixel/depth error reporting and deferred W splitter setup, plus tests. Actual root cause remains unknown until measured residuals become visible; do not relax quality gates or mark physical accuracy accepted. Full suite and owner hardware follow-up pending. Do not merge PR #8.
+
+## OPEN — 2026-11-03 second Task005 Windows GUI acceptance
+
+Owner screenshot confirms main camera viewport collapsed to a thin horizontal strip above the data tabs. New UI-only layout patch pushed to existing PR #8, with a native smoke test forcing a one-pixel splitter and verifying recovery, plus normal resolution/mode visibility assertions. Wait for actual Windows video validation and full test suite; do not merge or retarget PR.
+
+## OPEN — 2026-11-03 Windows Tk camera preview hardware acceptance
+
+Owner reported native Tk GUI lacks camera imagery while `STEREO_POSE_UI=opencv` succeeds. Existing Task005 PR #8 carries a PNG/base64 + viewport redraw repair and new tests. Pending: rerun full checkout regressions and validate real Windows left/right live previews including C/W/resize. Preserve PR topology and original measurement modules.
+
+Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
+Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
+
+# REVIEW_INBOX — Task005
+
+UI implementation and self-review complete; no outstanding software blocker.
+Branch feat/005-responsive-desktop-ui based on exact delivered Task004 b093e2d.
+331 full test methods +60 subtests and 10 native GUI methods at each of three DPI
+profiles passed. Protected lower layers remain identical. Owner Windows/physical
+acceptance pending; no merge or topology change authorized. Submission PR/head is recorded above.
+
+## Previous review inbox
+
 # REVIEW_INBOX.md
 
 ## ACTIVE — Task004 auto capture repair delivered

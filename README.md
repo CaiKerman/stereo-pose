@@ -1,3 +1,18 @@
+## Task005 responsive Chinese desktop interface (2026-10-14)
+
+`feat/005-responsive-desktop-ui` adds an optional native desktop presentation:
+resizable/DPI-aware initial sizing, aspect-preserving paired images, wrapping
+context buttons, scrollable XYZ/guidance/diagnostics and an in-window world
+reference form. Buttons dispatch the existing actions; fit/zero/save/activation,
+capture stability, math, recording and wire semantics remain unchanged.
+Tk is an optional standard Python component; missing Tk falls back to resizable
+OpenCV. No runtime install/download or config rewrite. `STEREO_POSE_UI=opencv`
+selects compatibility mode; direct module CLI also accepts `--ui opencv`.
+Keep local config/runtime/model and run RUN_ME in the same working environment.
+See [Chinese operator guide](README_先看我.txt), [scope](docs/instructions/005_RESPONSIVE_DESKTOP_UI.md)
+and [verification/limits](TEST_REPORT.md). Existing PR topology stays unchanged.
+Actual owner Windows/multi-monitor/camera acceptance remains pending.
+
 ## Task004 static-board auto capture repair (2026-10-13)
 
 `fix/004-calibration-auto-capture` repairs the impossible 3-observations-in-.30s

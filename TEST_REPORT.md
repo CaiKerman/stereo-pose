@@ -1,3 +1,106 @@
+## 2026-11-03 W raw frozen preview
+
+The latest owner photo showed reference markers visible in the main live camera images yet disappearing from the W modal preview, caused by `cv2.remap` rectification of the entire frozen frames with a high-zoom/cropping NPZ. The display previously drew marker outlines in rectified coordinates, meaning markers could be outside the preview. Change W only: show uncropped raw sensor images and draw markers there; continue to apply rectification only in existing per-point stereo XYZ triangulation.
+
+Committed tests in `tests/unit/test_world_alignment.py`: raw full-resolution preview preserves original camera pixels and draws polygons at the source location; fitted XYZ axes correctly project into raw left pixels under a non-identity R1 and distortion; W setup does not invoke `initUndistortRectifyMap`, and passes unchanged full frames to the dialog.
+
+Test execution status: no full private checkout or Windows webcam runtime access in connector environment; tests committed, not claimed passed. Owner should verify marker board visible in W near bottom of the unchanged original FOV; try R, observe the **separate** geometric acceptance diagnostics. Do not treat display repair as evidence that >3px epipolar rejection is an intrinsic camera limit.
+
+Additional isolated algorithm verification: 12 total/1 scrambled frame rejected (only 11 valid); 16 total/1 scrambled frame accepted 15 trusted pairs, with the 3rd frame explicitly identified as rejected. Formal repo regression for 16→15 and metadata has been committed; full checkout execution is still pending.
+
+## 2026-11-03 Checkerboard corner correspondence fix — verification scope
+
+Reason: `C -> R` independently re-ran `cv2.findChessboardCornersSB` on each camera and paired `cl[k]` with `cr[k]` without a stereo correspondence reconciliation; `V` metric validation already had direct/reversed_180 normalization, but the real NPZ solver did not. Owner produced an NPZ with catastrophic sample epipolar errors and unusable rectification. This code remedies the correspondence gap, NOT proof that the previous NPZ was caused by it.
+
+Local isolated OpenCV 4.13 synthetic check (not full repo checkout): reproduced 12 pairs with different K1/K2 and ~17-degree inter-camera rotation; direct, 3-of-12 reversed, 6-of-12 reversed, 8-of-12 reversed, and all-12 reversed all recovered the intentionally selected index orders. Separate runs rejected scrambled/right outlier and one repeated identical pose as ambiguous. Synthetic corrected 12-pair `stereoCalibrate` yielded stereo RMS ~0.288px, mean rectified epipolar error ~1.19px, and translation close to simulated rig. These local examples validate the numerical approach only.
+
+Repository test cases added to `tests/unit/test_calibration_capture_policy.py` to exercise the committed helper and full solve/NPZ and 25px catastrophic gate; they have not been executed against a full checked-out repository here (GitHub connector available but private git-clone from isolated container not available). Do not claim full pytest passed. Recommended verification: `py -3.12 -m pytest -q` in full project with existing dependencies; `py -3.12 -m unittest discover -s tests -v`; real Windows Action 4 12-pair session, check console `corner correspondence direct/reversed_180` report and evaluate new NPZ stereo RMS + sample epipolar mean/max before accepting XYZ. Previous NPZ persists and remains unverified.
+
+## Task005 manual NPZ controls — 2026-11-03
+
+New operator UI actions: `L` opens a native file picker, validates the exact saved calibration NPZ, confirms camera pairing before activation, and displays the active file name/path; `K` opens Save As for a byte-for-byte NPZ copy. Export verifies the source against the selected active SHA-256, writes a temporary file in the chosen directory, checks copy hash and publishes using `os.replace`; explicit overwrite permission is required. Neither export nor cancel changes the currently selected calibration.
+
+New tests committed: in `tests/unit/test_world_alignment.py`, byte-identical full W NPZ export, matching SHA, same-source/extension/hash mismatch rejection, existing file protection, confirmed overwrite and failure rollback; in `tests/integration/test_task003_runtime.py`, manual Load action, Save As without state changes, Load-then-Save, cancel/confirmation and existing-target behavior, CSV continuity; `tests/unit/test_desktop_presentation.py` checks L always available and K disabled without an active NPZ.
+
+**Execution status:** full source checkout, pytest/unittest and physical Windows Tk webcam validation were not available through the connector in this turn. No claim that all newly added tests have passed. Previous reported suite counts predate these changes. Operator acceptance should check exact source file path, loading a previous W NPZ, W rotation/depth, Save As SHA equality, re-start selection persistence, cancel and overwrite behavior.
+
+## 2026-11-03 Task005 W alignment regression
+
+Owner's W screenshot shows four marker IDs with "success" in the 2D detection table while `ID 0 corner0 fails stereo geometry` prevents any rigid fit. The frozen camera pane is simultaneously collapsed to the splitter line. These are independent symptoms: rendering/layout and stereo quality gating. This change does not claim the stored calibration is valid or the stereo failure has been resolved.
+
+New synthetic unit scenarios added in `tests/unit/test_world_alignment.py`: triangulation unavailable, epipolar error above configured bound, reprojection error above configured bound, negative depth; each test expects ID/corner identification, measured quality/limits, and advice that the frame is frozen. New native Tk smoke in `tools/smoke_desktop_ui.py` deliberately collapses the W splitter and expects restored visible image labels; manual splitter changes are preserved. Correspondence/triangulation acceptance policy itself remains unchanged.
+
+**Unverified:** no full test suite or actual owner Windows camera runtime execution occurred in this connector-based patch turn. The prior test counts elsewhere in this report do not validate these new changes. Recommended: `py -3.12 -m pytest -q` with `PYTHONPATH=src;.` on Windows and the Tk smoke in a GUI environment. Then test W > identify four markers > R; record exact measured epipolar/reprojection/depth diagnostics and compare camera pose/calibration before modifying thresholds.
+
+## Task005 Windows collapsed preview pane regression — 2026-11-03
+
+Owner screenshot after earlier PNG transport patch shows the camera pane collapsed to a thin splitter (~Y=210), with the coordinates table taking nearly all remaining height. Added layout safeguards in `app/desktop.py`: minimum requested preview-frame height and delayed first-paint sash placement (52% of actual pane height). Added native Tk smoke cases to measure the actual rendered preview/frame label heights in several viewport sizes and recover from a deliberately forced 1-pixel sash.
+
+An isolated Tk/Xvfb sanity check demonstrated `ttk.Panedwindow.sashpos(0,1)` yields an effectively 1-pixel pane and setting a later nonzero position restores it. This is supporting reproduction evidence, not a complete test of the repository GUI. Full project test suite and actual Windows webcam validation still need running. Do not reuse the prior Task005 test counts as proof of this follow-up.
+
+## Task005 Windows Tk live preview regression — 2026-11-03
+
+Owner reproduced blank native Tk previews; forced `STEREO_POSE_UI=opencv` restores live video. The affected presentation-only path used raw binary PPM through Tk PhotoImage. Fix: PNG/base64 frame transport and redraw after video-label viewport size becomes valid.
+
+Added unit tests in `tests/unit/test_desktop_presentation.py` for OpenCV BGR pixel round-trip through PNG, and failure handling; added native UI test in `tools/smoke_desktop_ui.py` that reads RGB pixels from real Tk PhotoImage objects across sequential LEFT/RIGHT frames and after resize.
+
+Independent isolated Tk/Xvfb demonstration in this session: 3 consecutive synthetic BGR frames rendered in 2 PhotoImage labels via PNG/base64, all 6 sampled pixel colors matched the expected RGB values. **This is not a full repository test run**. The exact repository suites and Windows/webcam hardware have not been run in this editing environment, and no new suite pass counts are claimed. Prior delivery's test counts below predate this repair.
+
+Pending acceptance: Windows Python 3.12 Tk preview, camera left/right changing independently, C calibration preview, W intentionally frozen preview then return to live view, resize and maximize, plus `python -m pytest -q` and native smoke in an environment with source checkout.
+
+Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
+Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
+
+# Task005 — verified interface regression (2026-10-14)
+
+Baseline before edits, exact Task004 parent b093e2d327b358c4571f5358d7e797930399774d:
+pytest **312 methods + 48 subtests passed**, 0 failed/skipped (3.78s).
+
+Final deterministic full suite: **331 methods + 60 subtests passed**, 0 failed/
+skipped (4.98s); unittest **331 tests OK**, 0 failed/skipped (4.653s). JUnit has
+391 method/subtest entries. Commands from repository root:
+
+```bash
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m pytest -q --junitxml=/workspace/scratch/5f3b60f3eba2/task005-pytest.xml
+PYTHONPATH=src:. /workspace/scratch/d466de06fca2/stereo-test-env/bin/python -m unittest discover -s tests -t . -q
+```
+
+Added tests: viewport fit/initial DPI bounds; no distortion/cropping of display
+copies; single action/disabled button/stale mode dispatch; accepted/candidate/
+missing display separation; explicit coordinate frame provenance; no calibration
+button gating; insufficient detections distinct from motion; manual duplicate
+notice survives next frame until backend expiry; optional Tk fallback/window
+close; reference editing atomicity/partial XYZ/unused templates/zero-first-row;
+native adapter original C/SPACE/C, CSV/W segmentation, inference count and cleanup.
+Existing capture/real SB/synthetic original solver/NPZ/world/default XYZ/CSV and
+legacy protocol tests continue passing. No cameras, GPU, model or internet needed.
+
+Native Tk smoke: `PYTHONPATH=src:. python tools/smoke_desktop_ui.py` with Xvfb and
+Chinese bitmap font. **10 methods passed at EACH of three virtual desktop profiles**:
+1920x1080 at 96 DPI (2.176s), 3840x2160 at 144 DPI (5.934s), 3840x2160 at 192 DPI
+(6.307s); 30 native method executions, no failures or Tk callback errors. Includes
+viewport requests 800x600, 1024x768, 1366x768, 1920x1080, 600x900, 520x420 (DPI-aware
+minimum applies), control visibility, image aspect ratios, read-only help/diagnostic focus retaining shortcuts, real widget button/
+keyboard actions, entry typing isolation, dirty preview refusal, same-event
+mode/fit ordering, close/cancel, and complete original world fit -> confirmation
+-> NPZ save/activate/reload using synthetic controls. Screenshot visual review of
+real Chinese Tk labels and 800x600/1366x768 layout performed; no user images used.
+Test Xvfb/fonts are scratch-only QA dependencies, never app/repository dependencies.
+
+Compatibility identity check vs parent: geometry/triangulation, coordinates/
+camera_midpoint, rigid, markers, calibration/package, collection, stability,
+app/measurements, outputs/csv_recorder, v1_message, quality/scoring, speed_gate,
+filtering/one_euro, capture/camera, persistence and config are byte-identical.
+RUN_ME.py is byte-identical. Original world fit/zero/metadata and save/activate
+blocks are byte-identical. Only UI orchestration/presentation changed.
+`git diff --check` clean. No config rewrite, math/quality threshold or protocol
+change. Actual Windows/toolkit/backend, physical cameras, model/GPU, multi-monitor
+DPI transitions and absolute accuracy remain untested; no hardware acceptance.
+Processing remains synchronous, so slow detection/solve can delay UI events.
+OpenCV compatibility/picker native HWND path injected, not physically exercised.
+
+## Previous task reports
+
 # Task004 automatic capture verification — 2026-10-13
 
 Tested implementation: `b2922dbaa3ffe4cfdaa593a28f15737a9318adb4`.

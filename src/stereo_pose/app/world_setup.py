@@ -10,6 +10,7 @@ from stereo_pose.calibration.package import activate_calibration, save_registere
 from stereo_pose.coordinates.rigid import fit_rigid, relative_origin
 from stereo_pose.coordinates.markers import detect_markers, read_references, match_features
 from stereo_pose.persistence import ensure_managed_location
+from stereo_pose.app.desktop import configure_highgui
 
 
 def world_axis_pixels(transform, projection, length=100., anchor_world=(0.,0.,0.)):
@@ -17,6 +18,53 @@ def world_axis_pixels(transform, projection, length=100., anchor_world=(0.,0.,0.
     if np.any(C[:,2] <= 0): return None
     uv=np.c_[C,np.ones(4)] @ np.asarray(projection).T
     return uv[:,:2]/uv[:,2:3]
+
+
+def world_axis_pixels_raw(transform, triangulator, length=100., anchor_world=(0.,0.,0.)):
+    """Project world axes onto the ORIGINAL left camera frame.
+
+    The candidate world fit lives in rectified-left coordinates. Undo R1 first
+    to return to the physical left camera, then apply its actual K1 and D1.
+    This keeps the UI's raw image and proposed axis overlay in one pixel space.
+    """
+    points = np.array([[0.,0.,0.],[length,0.,0.],
+                       [0.,length,0.],[0.,0.,length]],dtype=float)
+    rectified_xyz = transform.inverse().apply(points + np.asarray(anchor_world,dtype=float))
+    original_xyz = (np.asarray(triangulator.R1,dtype=float).T @ rectified_xyz.T).T
+    if not np.all(np.isfinite(original_xyz)) or np.any(original_xyz[:,2] <= 0):
+        return None
+    uv, _ = cv2.projectPoints(
+        original_xyz.reshape(-1,1,3),
+        np.zeros(3),np.zeros(3),
+        triangulator.K1,triangulator.D1
+    )
+    uv = uv.reshape(-1,2)
+    return uv if np.all(np.isfinite(uv)) else None
+
+
+def raw_frozen_markers(frame_left, frame_right, detected_left, detected_right):
+    """Annotate untouched frozen sensor images, not zoomed/rectified views.
+
+    Actual 3D fitting still rectifies individual 2D marker corners internally
+    in StereoTriangulator; preview rendering must not hide markers under a
+    zooming camera rectification map.
+    """
+    frames=[]
+    for image, detected in ((frame_left, detected_left),(frame_right, detected_right)):
+        canvas=image.copy()
+        height,width=canvas.shape[:2]
+        for marker_id,corners in detected.items():
+            raw=np.asarray(corners,dtype=float).reshape(-1,2)
+            if len(raw)<4 or not np.all(np.isfinite(raw)):
+                continue
+            outline=np.rint(raw).astype(np.int32).reshape(-1,1,2)
+            cv2.polylines(canvas,[outline],True,(0,255,255),2)
+            anchor=np.rint(raw[0]).astype(int)
+            at=(int(np.clip(anchor[0],0,width-1)),int(np.clip(anchor[1],0,height-1)))
+            cv2.putText(canvas,str(marker_id),at,cv2.FONT_HERSHEY_SIMPLEX,
+                        .7,(0,255,255),2)
+        frames.append(canvas)
+    return frames
 
 
 def prepare_reference_file(path, ids, dictionary):
@@ -30,7 +78,7 @@ def prepare_reference_file(path, ids, dictionary):
 
 
 def run_world_setup(*, frame_left, frame_right, triangulator, calib_path, config_path,
-                    cfg, registration=None, detector=detect_markers):
+                    cfg, registration=None, detector=detect_markers, desktop=None):
     """No camera read, no YOLO call, no imagery written. Return activated NPZ or None."""
     world=cfg['world'];dictionary=world['dictionary'];runtime=cfg['runtime']['root']
     size=(frame_left.shape[1],frame_left.shape[0])
@@ -42,38 +90,39 @@ def run_world_setup(*, frame_left, frame_right, triangulator, calib_path, config
     prepare_reference_file(reference,set(left)&set(right),dictionary)
     print(f'[world] frozen current frame pair. IDs L={sorted(left)} R={sorted(right)}')
     print(f'[world] edit real XYZ mm: {reference.resolve()} (R=reload/fit, U=confirm physical +Z up, ENTER=save+activate, Z=zero-only, ESC=cancel)')
-    if os.name=='nt':
+    if os.name=='nt' and desktop is None:
         try: subprocess.Popen(['notepad.exe',str(reference.resolve())])
         except OSError as e: print(f'[world] open CSV manually: {e}')
-    frames=[]
-    for image,K,D,R,P,detected in [(frame_left,triangulator.K1,triangulator.D1,triangulator.R1,triangulator.P1,left),
-                                  (frame_right,triangulator.K2,triangulator.D2,triangulator.R2,triangulator.P2,right)]:
-        h,w=image.shape[:2]
-        maps=cv2.initUndistortRectifyMap(K,D,R,P,(w,h),cv2.CV_32FC1)
-        rectified=cv2.remap(image,*maps,cv2.INTER_LINEAR)
-        for i,c in detected.items():
-            uv=cv2.undistortPoints(c.reshape(-1,1,2),K,D,R=R,P=P).reshape(-1,2)
-            cv2.polylines(rectified,[uv.astype(np.int32)],True,(0,255,255),2)
-            cv2.putText(rectified,str(i),tuple(uv[0].astype(int)),cv2.FONT_HERSHEY_SIMPLEX,.7,(0,255,255),2)
-        frames.append(rectified)
+    # W is an operator reference-identification task, not a rectification
+    # preview. Always preserve the complete raw FOV and mark raw pixel corners.
+    # Rectification remains inside triangulator.triangulate_with_quality().
+    frames=raw_frozen_markers(frame_left,frame_right,left,right)
     fit=None;candidate=None;up=False;zero=False;error='Enter real XYZ in CSV, save it, then R=fit'; report={}; naming=False
     name=world['coordinate_name']
+    dialog=None
     try:
+        if desktop is not None:
+            from stereo_pose.app.world_form import WorldForm
+            dialog=WorldForm.__new__(WorldForm)
+            WorldForm.__init__(dialog,desktop,reference,left,right,dictionary,name)
         return _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,cfg,registration,dictionary,runtime,size,
-                           fit,candidate,up,zero,error,report,naming,name)
+                           fit,candidate,up,zero,error,report,naming,name,dialog)
     finally:
-        try:cv2.destroyWindow('World alignment')
-        except cv2.error:pass
+        if dialog is not None:dialog.close()
+        else:
+            try:cv2.destroyWindow('World alignment')
+            except cv2.error:pass
 
 
 def _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,cfg,registration,dictionary,runtime,size,
-                fit,candidate,up,zero,error,report,naming,name):
+                fit,candidate,up,zero,error,report,naming,name,dialog=None):
     world=cfg['world']
+    window_ready=False
     while True:
         a,b=[x.copy() for x in frames]
         if candidate is not None:
-            pixels=world_axis_pixels(candidate['transform'],triangulator.P1,
-                                    anchor_world=candidate['metadata']['reference_points'][0]['xyz_mm'])
+            pixels=world_axis_pixels_raw(candidate['transform'],triangulator,
+                                        anchor_world=candidate['metadata']['reference_points'][0]['xyz_mm'])
             if pixels is not None:
                 origin=tuple(np.round(pixels[0]).astype(int))
                 for i,(color,label) in enumerate([((0,0,255),'+X'),((0,255,0),'+Y'),((255,0,0),'+Z')],1):
@@ -85,11 +134,18 @@ def _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,
                f'Up confirmed={up} | registration RMS={report.get("rms_mm","---")} max={report.get("max_mm","---")} mm',
                error, report.get('warning',''), 'Residual is registration consistency, not absolute eye accuracy.']
         for i,line in enumerate(lines): cv2.putText(panel,str(line),(12,23+i*22),cv2.FONT_HERSHEY_SIMPLEX,.44,(255,255,255),1,cv2.LINE_AA)
-        cv2.imshow('World alignment',cv2.vconcat([canvas,panel]));key=cv2.waitKey(30)&0xff
+        if dialog is not None:
+            key=dialog.show((a,b),zero=zero,up=up,candidate=candidate,report=report,error=error)
+            name=dialog.name.get().strip()
+            if getattr(dialog,'dirty',False):candidate=None;up=False
+        else:
+            if not window_ready:
+                configure_highgui('World alignment',(480,canvas.shape[1],3));window_ready=True
+            cv2.imshow('World alignment',cv2.vconcat([canvas,panel]));key=cv2.waitKey(30)&0xff
         if key==27 or (key in (ord('q'),ord('Q')) and not naming):
             return None
         # A window close is equivalent to cancellation (not a hung modal loop).
-        if cv2.getWindowProperty('World alignment',cv2.WND_PROP_VISIBLE) < 1:return None
+        if dialog is None and cv2.getWindowProperty('World alignment',cv2.WND_PROP_VISIBLE) < 1:return None
         if naming:
             if key==13: naming=False
             elif key in (8,127):name=name[:-1]

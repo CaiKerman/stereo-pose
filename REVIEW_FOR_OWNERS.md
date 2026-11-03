@@ -1,3 +1,45 @@
+## 2026-11-03 World dialog viewer crop issue
+
+Owner photo showed missing ArUco target in W while visible in full live preview. Diagnosed unconditional full-frame NPZ rectification/zoom in W `world_setup.py`. GUI-only fix shows raw frozen full FOV, draws raw marker outlines and reverse-projects 3D coordinate axes to raw left pixels; internal 3D triangulation remains on the same rectified coordinates. Numerical sensor quality claims are unchanged: previous 14+px measured epipolar errors still need independent diagnosis; do not silently relax 3px quality gate. Full Windows camera acceptance and repository tests pending. Existing PR #8 open.
+
+Follow-up acceptance detail: pairs with unresolvable correspondence are excluded only if the remaining sample count still satisfies the original 12-pair minimum, logged with per-frame indices in NPZ metadata. If insufficient, the solver refuses publication. No camera-model or angle restriction introduced.
+
+## 2026-11-03 — Numerical calibration repair: owner hardware acceptance required
+
+Owner explicitly requested correction of mismatched stereo checkerboard corners (rather than changing camera parameters or forcing 24 samples). Formal Task005 PR #8 now changes the solver to check independent left/right detector orders using consensus fundamental geometry, with direct / whole-board 180 reversal only. The earlier `V`-only correction was insufficient for building NPZs. Synthetic isolated OpenCV verification supports the approach, but previous owner NPZ alone cannot identify which saved 2D frame ordering went wrong; raw 12 captured stereo pairs are needed to confirm the real-world cause. The added safety block at a 25px mean sample epipolar error is intentionally conservative, prevents publishing obviously invalid geometry, and does not change 3px per-joint gates. Owner approval/review and Windows field validation remain required before merge; no other PR topology touched.
+
+## Task005 manually select and back up NPZ — hardware acceptance OPEN (2026-11-03)
+
+Owner found the UI omitted basic loading and manual saving of previous calibration NPZs, and default `latest` selects `auto/stereo_*.npz` rather than owner-saved `saved/world_*.npz`. Existing PR #8 now provides explicit L loading and K Save As (without changing current calibration), current file identity display, SHA-256 checked backups and explicit overwrite confirmation. Old geometry/quality code is not touched. Tests committed but not run against physical Windows hardware. Keep PR open until the owner confirms that an original saved W NPZ can be reselected and the extreme rectified epipolar failure disappears or is independently diagnosed.
+
+## 2026-11-03 W alignment owner blocker (open)
+
+The provided photo shows ID 0..3 markers recognized in both 2D camera images but the first marker corner rejected by 3D triangulation quality. The real root cause (failed epipolar gate vs reprojection gate vs depth/invalid triangulation) cannot be established from the old generic error. The updated error now exposes actual values and configured limits while preserving all checks. W modal preview was also collapsed; the native splitter is initialized after layout and has a regression case. Do not bypass these gates or merge PR #8 until physical stereo accuracy and GUI are accepted. Temporary diagnostic workflow: in full world-mode clear the XYZ of ID 0 to omit that reference and test the remaining three noncollinear points; this is a diagnostic only, without independent four-point redundancy.
+
+## 2026-11-03 second Task005 hardware finding: preview pane collapsed
+
+Owner's supplied Tk screenshot has no camera area because the video pane is reduced to a thin line above the coordinate tabs. Corrective GUI-only patch declares an initial preview height and initializes the splitter once after first native paint; native smoke tests now assert actual pane/label dimensions and recovery from a 1-pixel sash. Initial manual workaround: drag the horizontal divider between guidance and tabs downward. Windows owner acceptance remains blocking for PR #8; do not merge without confirming live video and resized layouts on the actual machine. No stereo/quality/world registration changes.
+
+## 2026-11-03 Task005 Windows preview repair — owner verification required
+
+Owner confirmed blank Tk live preview but normal OpenCV preview with same cameras. PR #8 now includes PNG/base64 image transport and viewport resize redraw, with pixel-level regression tests. Actual owner Windows webcam test is still pending; do not merge PR #8 until verified. The `ID 0 corner0 fails stereo geometry` world alignment error is a separate geometric check; no tolerance/geometry code was changed.
+
+Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
+Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
+
+# Task005 owner review
+
+Interface software implementation and full regression complete. Independent
+branch `feat/005-responsive-desktop-ui` -> `fix/004-calibration-auto-capture`;
+PR #8 contains tested implementation 5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738 followed by documentation only. Existing PRs remain
+unchanged/unmerged. No mathematical or data-contract decision requested.
+Remaining owner acceptance: actual Windows resizing/maximize/display scaling,
+physical LEFT/RIGHT camera picker, existing NPZ restore and buttons/W reference
+form with real printed markers. Processing remains synchronous; long detection
+or solve still delays event handling. This is a UI change, not accuracy closure.
+
+## Previous review records
+
 # Review for owners — Task004 capture repair
 
 - Ready software delivery: https://github.com/CaiKerman/stereo-pose/pull/7 ;

@@ -1,3 +1,33 @@
+Task005 follow-up 2026-11-03: W frozen world-setup viewer zoom/crop made codes invisible although detection used raw images. Replaced the W display remap with original unrectified frozen frames, retained full FOV and raw ArUco overlays, reverse-projected the fitted axis overlay through R1/K1/D1 to raw left image. 3D math untouched, tests committed; owner hardware acceptance pending. Continue current PR #8 without merge/retarget.
+
+Correspondence fix follow-up: if at least 12 independently trusted stereo pairs remain, omit ambiguous extra captures with recorded indices and continue; otherwise fail safely. Existing min=12, target=24 (recommendation only) unchanged.
+
+Task005 owner-directed 2026-11-03 numerical repair on same PR #8: reconcile independent left/right checkerboard corner index order before C→R stereoCalibrate, using geometry-only direct/180 candidates, without assuming matching cameras or requiring 24 samples. Add diagnostics and reject unsafe/ambiguous correspondence and catastrophic (>25px mean) final epipolar outcomes before NPZ publishing. Synthetic tests committed; full checkout suite and physical camera validation outstanding. This owner instruction supersedes historical UI-only protected math restrictions for this specific repair. Do not merge, retarget, or change other PR topology.
+
+Task005 2026-11-03: owner requires manual NPZ load and save controls. Existing PR #8 now includes main UI L (pick/validate/activate existing stereo+world NPZ) and K (Save As exact full NPZ without changing active selection), current NPZ visibility, explicit overwrite protection, SHA-256 verified atomic export, and regression tests. Full checkout tests and actual Windows hardware acceptance remain OPEN. No merge.
+
+Task005 owner acceptance update 2026-11-03: owner still cannot save W coordinate frame; four ArUco IDs recognized in 2D, first ID0 corner0 fails stereo quality (cause formerly opaque), and the W preview pane is collapsed. Same PR #8 now adds per-corner numeric error/limit reporting, accurate "2D identified" labels, deferred W splitter initialization, and regression tests. Geometry/limits untouched. Owner Windows validation and full test run OPEN.
+
+Task005 acceptance update 2026-11-03: Owner screenshot exposes preview pane collapsed to ~1 pixel on Windows Tk. Same existing PR #8 now includes nonzero preview requested height and first-frame deferred splitter initialization, plus native GUI smoke coverage for collapsed sash. Windows hardware approval remains OPEN. Do not merge.
+
+Task005 UI hardware follow-up (2026-11-03): blank Windows Tk camera preview reported; OpenCV compatibility view works. Presentation-only fix pushed to the same `feat/005-responsive-desktop-ui` branch and PR #8, with pixel-level tests. Full repo tests and owner Windows acceptance remain open; do not merge or change PR topology.
+
+Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
+Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
+
+# CURRENT_TASK
+
+## Task005 — responsive desktop/operator interface
+
+- Owner authorized new branch on 2026-10-14 09:39 Asia/Shanghai.
+- Branch: `feat/005-responsive-desktop-ui`, parent Task004 `b093e2d327b358c4571f5358d7e797930399774d`.
+- New PR base: `fix/004-calibration-auto-capture`; existing PR #2/#3/#6/#7 unchanged/unmerged.
+- Status: SOFTWARE UI COMPLETE; full 331-method/60-subtest regression and 30 native GUI executions passed. Instruction: `docs/instructions/005_RESPONSIVE_DESKTOP_UI.md`.
+- Scope is UI/input adapters; protect verified math, detection, capture policy, NPZ/CSV and protocols.
+- No merge/main edits/retarget/rebase/force-push/deletion authorized.
+
+## Previous Task004 delivery (history)
+
 # CURRENT_TASK
 
 ## Task004 P0 — automatic checkerboard capture repair

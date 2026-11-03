@@ -1,3 +1,15 @@
+## Task005 desktop operator adapter
+
+Default RUN_ME now prefers a resizable Chinese desktop view. W opens an in-window
+reference form on the same frozen pair, preserves explicit marker features and
+IDs, and writes the SAME CSV contract only when fitting. Full mode omits fully
+blank unused templates; partial coordinates are rejected. Zero retains first-row
+semantics; “this point as zero” selects/reorders it explicitly. Edited coordinates
+invalidate the preview/confirmation immediately. Fit/physical-up/save commands
+still run the original validation, rigid/zero and immutable NPZ activation block.
+Typing in fields never dispatches action hotkeys. Cancel retains the active NPZ.
+The OpenCV compatibility workflow described below remains available.
+
 # Task003A/003B — operator, default frame, world NPZ and manual CSV v1
 
 ## Default frame (Task003B)

@@ -59,8 +59,37 @@ def match_features(references, left, right, triangulator, dictionary, max_epi, m
         indexes=range(4) if r['feature_type']=='center' else [int(r['feature_type'][-1])]
         for k in indexes:
             q=triangulator.triangulate_with_quality(left[i][k],right[i][k])
-            if q is None or not np.all(np.isfinite(q['xyz_mm'])) or q['xyz_mm'][2] <= 0 or q['epipolar_error_px'] > max_epi or q['reprojection_error_max_px'] > max_reproj:
-                raise ValueError(f'ID {i} corner{k} fails stereo geometry; hold target still/check correspondence')
+            # 2D marker detection can succeed even when the old stereo
+            # calibration rejects its 3D geometry. Show the actual failing
+            # measurement and threshold, not a generic "hold target still"
+            # hint (the W setup image is deliberately frozen).
+            reasons = []
+            if q is None:
+                reasons.append('三角化失败')
+                epi = reproj = depth = None
+            else:
+                depth = float(q['xyz_mm'][2])
+                epi = float(q['epipolar_error_px'])
+                reproj = float(q['reprojection_error_max_px'])
+                if not np.all(np.isfinite(q['xyz_mm'])):
+                    reasons.append('三维坐标无效')
+                if not np.isfinite(depth) or depth <= 0:
+                    reasons.append('相机深度必须大于0')
+                if not np.isfinite(epi) or epi > max_epi:
+                    reasons.append('极线误差超限')
+                if not np.isfinite(reproj) or reproj > max_reproj:
+                    reasons.append('重投影误差超限')
+            if reasons:
+                def value(v, unit):
+                    return 'N/A' if v is None or not np.isfinite(v) else f'{v:.2f}{unit}'
+                raise ValueError(
+                    f'ID {i} corner{k} 双目几何检查未通过（{", ".join(reasons)}）。'
+                    f'极线误差 {value(epi,"px")} / 上限 {max_epi:g}px；'
+                    f'重投影最大误差 {value(reproj,"px")} / 上限 {max_reproj:g}px；'
+                    f'相机深度 {value(depth,"mm")}。'
+                    '当前图像已冻结，请取消并重新拍摄；'
+                    '若多次失败，检查左右相机顺序、现有 NPZ 标定和图码清晰度。'
+                )
             points.append(q['xyz_mm'])
         controls.append(np.mean(points,axis=0));targets.append(r['xyz_mm'])
     return np.asarray(controls), np.asarray(targets)

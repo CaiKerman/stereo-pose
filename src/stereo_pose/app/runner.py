@@ -25,7 +25,9 @@ from stereo_pose.capture.camera import open_camera, read_stereo_pair
 from stereo_pose.config import load_config
 from stereo_pose.app.measurements import measure_frame, make_readout, append_readout
 from stereo_pose.app.world_setup import run_world_setup
-from stereo_pose.calibration.package import load_readout_registration, activate_calibration, file_sha256, read_bundle, validate_stereo_bundle
+from stereo_pose.app.desktop import create_display
+from stereo_pose.app.presentation import tracking_view, calibration_view
+from stereo_pose.calibration.package import load_readout_registration, activate_calibration, file_sha256, read_bundle, validate_stereo_bundle, export_calibration_npz
 from stereo_pose.filtering import JointSmoother
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, resolve_joints
@@ -125,6 +127,37 @@ def _capture_image_size(left, right, requested):
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         return (w, h) if w > 0 and h > 0 else None
     return _size(left) or _size(right) or (int(requested[0]), int(requested[1]))
+
+
+def inspect_npz_for_live_load(path, active_size, *, board, fps, camera_indexes):
+    """Validate an operator-selected NPZ without altering running state/config.
+
+    A saved NPZ is tied to capture resolution and physical LEFT/RIGHT rig.
+    Resolution mismatch is a hard failure; index/FPS/board caveats are surfaced
+    to the operator for explicit confirmation. The file is never rewritten.
+    """
+    candidate = Path(path).expanduser().resolve()
+    if candidate.suffix.lower() != '.npz' or not candidate.is_file():
+        raise ValueError('请选择已经存在的 .npz 双目标定文件')
+    bundle = read_bundle(candidate)
+    validate_stereo_bundle(bundle)
+    if 'image_size' not in bundle:
+        raise ValueError('NPZ 缺少 image_size，无法核对双摄分辨率；请重新标定或选择包含尺寸信息的文件')
+    size = np.asarray(bundle['image_size']).reshape(-1)
+    if size.size != 2 or not np.all(np.isfinite(size)) or np.any(size <= 0) or np.any(size != np.round(size)):
+        raise ValueError('NPZ 中 image_size 无效，不能安全加载')
+    image_size = tuple(int(v) for v in size)
+    if image_size != tuple(active_size):
+        raise ValueError(
+            f'NPZ 标定分辨率 {image_size} 与当前双摄分辨率 {tuple(active_size)} 不一致；'
+            '拒绝加载。请使用匹配的原始摄像头分辨率或重新标定。'
+        )
+    tri = StereoTriangulator(candidate)
+    registration, world_warnings = load_readout_registration(candidate, active_size)
+    warnings = validate_calibration_compatibility(candidate, active_size, board, fps)
+    warnings.extend(camera_identity_warnings(candidate, camera_indexes[0], camera_indexes[1]))
+    warnings.extend(world_warnings)
+    return candidate, tri, registration, warnings, file_sha256(candidate)
 
 
 def _actual_fps(cap):
@@ -349,6 +382,8 @@ def _run(args, cfg, resources):
     recorder = CsvRecorder(cfg["recording"]["output_dir"], runtime_root,
         sample_rate_hz=cfg["recording"]["sample_rate_hz"],
         include_candidates=cfg["recording"]["include_rejected_candidates"])
+    display = create_display(getattr(args, 'ui', 'auto'))
+    resources.callback(display.close)
 
     frame_index = 0
     kp_conf = float(p["keypoint_confidence"])
@@ -394,11 +429,12 @@ def _run(args, cfg, resources):
 
             if calibrator.active:
                 calibrator.process(fl, fr, force_capture=False)
-                pl, pr = resize_pair(fl, fr)
-                canvas = cv2.hconcat([pl, pr])
-                canvas = calibrator.draw_overlay(canvas, pair_timing)
-                cv2.imshow("Stereo Pose 3D", canvas)
-                key = cv2.waitKey(1) & 0xFF
+                if display.native:
+                    key = display.show(pair=(fl,fr), view=calibration_view(calibrator))
+                else:
+                    pl, pr = resize_pair(fl, fr)
+                    canvas = calibrator.draw_overlay(cv2.hconcat([pl, pr]), pair_timing)
+                    key = display.show(canvas)
 
                 if key == ord(" "):
                     calibrator.capture_current()
@@ -449,6 +485,7 @@ def _run(args, cfg, resources):
                                     protected_files=[calib_path],
                                 )
                         except Exception as e:
+                            display.notify(f'标定计算失败：{e}')
                             print(f"[calibration] solve failed: {e}")
                 elif key in (ord("x"), ord("X")):
                     calibrator.discard()
@@ -484,8 +521,10 @@ def _run(args, cfg, resources):
             if diagnostics_enabled and frame_index % diag_every == 0:
                 print(format_diagnostic_summary(frame_index, diagnostics))
 
-            vl, vr = resize_pair(res_l.plot(), res_r.plot(), target_h=360)
-            canvas = cv2.hconcat([vl, vr])
+            display_images = (res_l.plot(), res_r.plot())
+            if not display.native:
+                vl, vr = resize_pair(*display_images, target_h=360)
+                canvas = cv2.hconcat([vl, vr])
             rms = (
                 f"{triangulator.stereo_rms:.4f}"
                 if triangulator is not None and triangulator.stereo_rms is not None
@@ -511,7 +550,7 @@ def _run(args, cfg, resources):
             if mean_epi is not None and mean_epi > 3.0:
                 alarms.append(f"! mean epipolar {mean_epi:.1f}px > 3px gate")
 
-            overlay_status(canvas, build_menu_lines(
+            menu_lines = build_menu_lines(
                 menu_expanded,
                 camera_left=c["left"],
                 camera_right=c["right"],
@@ -531,14 +570,79 @@ def _run(args, cfg, resources):
                 one_euro_beta=smoother.beta,
                 one_euro_d=smoother.d_cutoff,
                 alarms=alarms,
-            ))
-            canvas = append_readout(canvas, readout_rows, registration, recorder.status(), world_warnings=world_warnings)
-            cv2.imshow("Stereo Pose 3D", canvas)
-            key = cv2.waitKey(1) & 0xFF
+            )
+            if display.native:
+                key = display.show(pair=display_images, view=tracking_view(
+                    readout_rows, registration, calibrated=triangulator is not None,
+                    recording=recorder.active, record_status=recorder.status(), smoothing=smoother.enabled,
+                    cameras=(c['left'],c['right']), fps=fps_txt, details=menu_lines,
+                    warnings=alarms+world_warnings, calibration_file=calib_path))
+            else:
+                overlay_status(canvas, menu_lines)
+                canvas = append_readout(canvas, readout_rows, registration, recorder.status(), world_warnings=world_warnings)
+                key = display.show(canvas)
 
             if key in (ord("c"), ord("C")):
                 recorder.stop("enter_calibration")
                 calibrator.start()
+            elif key in (ord("k"), ord("K")):
+                if calib_path is None or active_artifact_sha is None:
+                    display.notify('尚未加载有效双目标定；请先加载或通过 C → R 创建 NPZ。')
+                elif not display.native:
+                    display.notify('OpenCV 兼容界面不支持文件选择窗口；请使用新版桌面界面另存 NPZ。')
+                else:
+                    try:
+                        destination = display.save_calibration_file(calib_path)
+                        if destination:
+                            target=Path(destination).expanduser()
+                            replace_existing=target.exists()
+                            if replace_existing and not display.confirm_npz_overwrite(target):
+                                display.notify('取消覆盖；原 NPZ 和目标文件均保持不变。')
+                            else:
+                                saved=export_calibration_npz(
+                                    calib_path, target, expected_sha256=active_artifact_sha,
+                                    overwrite=replace_existing)
+                                display.notify(f'已另存完整 NPZ：{saved}；当前使用的标定未改变。')
+                                print(f'[calibration] EXPORTED NPZ: {saved}; active remains {calib_path}')
+                    except Exception as error:
+                        display.notify(f'另存 NPZ 失败，原标定保持不变：{error}')
+                        print('[calibration] NPZ export rejected; active calibration retained:',error)
+            elif key in (ord("l"), ord("L")):
+                if not display.native:
+                    print('[calibration] 兼容模式请在 config.json 中设置 stereo.load=explicit 与 stereo.explicit_file，再重启')
+                else:
+                    try:
+                        chosen = display.choose_calibration_file(
+                            initialdir=Path(calib_path).parent if calib_path else Path(s['calibration_dir']))
+                        if chosen:
+                            candidate_path, candidate_tri, candidate_reg, warnings, candidate_sha = (
+                                inspect_npz_for_live_load(
+                                    chosen, active_size,
+                                    board=(s['board_cols'], s['board_rows']),
+                                    fps=float(c['fps']) if c.get('fps') else None,
+                                    camera_indexes=(c['left'], c['right']),
+                                )
+                            )
+                            if display.confirm_calibration_file(candidate_path, warnings):
+                                # Durable selection first; a validation or config write
+                                # failure leaves the running calibration untouched.
+                                selection = activate_calibration(args.config, candidate_path)
+                                recorder.stop('calibration_switched')
+                                s.update(selection)
+                                calib_path = candidate_path
+                                triangulator = candidate_tri
+                                registration = candidate_reg
+                                world_warnings = list(warnings)
+                                active_artifact_sha = candidate_sha
+                                smoother.reset()
+                                speed_gate.reset()
+                                display.notify(f'已加载并启用 NPZ：{candidate_path.name}')
+                                print(f'[calibration] SELECTED NPZ: {candidate_path}; SHA-256={candidate_sha}')
+                            else:
+                                display.notify('已取消切换 NPZ；当前标定未改变。')
+                    except Exception as error:
+                        display.notify(f'加载 NPZ 失败，原标定保持不变：{error}')
+                        print('[calibration] NPZ load rejected; previous calibration retained:', error)
             elif key in (ord("f"), ord("F")):
                 recorder.stop("filter_changed")
                 enabled = smoother.toggle()
@@ -561,8 +665,10 @@ def _run(args, cfg, resources):
                 if calib_path is not None:
                     try:
                         saved = promote_calibration(calib_path, s["calibration_dir"], source="promoted")
+                        display.notify(f'已保留当前标定副本：{saved}')
                         print(f"[calibration] pinned current calibration -> {saved}")
                     except Exception as e:
+                        display.notify(f'保留标定失败：{e}')
                         print(f"[calibration] pin failed: {e}")
                 else:
                     print("[calibration] no active calibration to pin")
@@ -573,7 +679,8 @@ def _run(args, cfg, resources):
                 else:
                     try:
                         new_path = run_world_setup(frame_left=fl, frame_right=fr, triangulator=triangulator,
-                            calib_path=calib_path, config_path=args.config, cfg=cfg, registration=registration)
+                            calib_path=calib_path, config_path=args.config, cfg=cfg, registration=registration,
+                            desktop=display if display.native else None)
                         if new_path is not None:
                             # Setup saves+activates atomically before exposing the new frame.
                             calib_path = new_path
@@ -581,13 +688,16 @@ def _run(args, cfg, resources):
                             triangulator = StereoTriangulator(new_path)
                             s.update(load_config(args.config)["stereo"])
                             registration, world_warnings = load_readout_registration(new_path, active_size)
+                            display.notify(f'已保存并启用坐标系：{registration["name"] if registration else new_path}')
                     except Exception as e:
+                        display.notify(f'坐标设置失败，原标定保持不变：{e}')
                         print("[world] setup failed; previous active retained:", e)
             elif key in (ord("t"), ord("T")):
                 if recorder.active:
                     path = recorder.stop("manual")
                     print(f"[recording] STOPPED samples={recorder.samples} -> {path}")
                 elif not cfg["recording"]["enabled"] or not cfg["recording"]["save_csv"]:
+                    display.notify('配置已关闭 CSV 录制。')
                     print("[recording] CSV disabled by config")
                 elif calib_path is None:
                     print("[recording] load/create a stereo calibration first")
@@ -610,6 +720,7 @@ def _run(args, cfg, resources):
                             "selected_joints": list(readout_joints), "pose": dict(p)})
                         print(f"[recording] STARTED at {cfg['recording']['sample_rate_hz']:g}Hz (export sampling) -> {path}")
                     except Exception as e:
+                        display.notify(f'录制启动失败：{e}')
                         print("[recording] start failed; tracking continues:", e)
             elif key in (ord("d"), ord("D")):
                 diagnostics_enabled = not diagnostics_enabled
@@ -659,8 +770,10 @@ def _run(args, cfg, resources):
                         confidence_threshold=kp_conf,
                     )
                     print(f"[snapshot] saved -> {snap_dir}")
+                    display.notify(f'诊断快照已保存：{snap_dir}')
                     print(f"[snapshot] offline replay: python tools/inspect_snapshot.py {snap_dir}")
                 except Exception as e:  # noqa: BLE001 — snapshot must never crash tracking
+                    display.notify(f'快照保存失败：{e}')
                     print(f"[snapshot] FAILED: {e}")
             elif key in (ord("q"), 27):
                 break
@@ -693,6 +806,8 @@ def main():
     ap.add_argument("--right-cam", type=int)
     ap.add_argument("--device", help="auto / cpu / 0 / 1 ...")
     ap.add_argument("--model")
+    ap.add_argument('--ui', choices=('auto','tk','opencv'), default='auto',
+                    help='desktop UI (auto default); opencv keeps the compatible keyboard view')
     ap.add_argument(
         "--camera-pick", action="store_true",
         help="run the visual camera discovery/LEFT-RIGHT selection before "

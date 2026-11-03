@@ -1,3 +1,82 @@
+## 2026-11-03 W dialog raw full-frame preview fix (owner screenshot)
+
+- Root cause in `src/stereo_pose/app/world_setup.py`: frozen W operator preview called `initUndistortRectifyMap` and `remap` with active NPZ, where rectified P1/P2 can zoom/crop almost the whole ArUco target out of the frame. This is a presentation defect separate from ArUco detection and 3D quality thresholds.
+- W now freezes the unchanged original LEFT/RIGHT camera FOV and draws detected ArUco corners/IDs in **original raw pixel coordinates**. No cropping or zooming remap on the preview. The existing marker detection and triangulation still use raw 2D corners with on-demand internal stereo rectification; all measurements, quality thresholds and saved NPZ semantics remain unchanged.
+- A fitted world frame's XYZ axis overlay is projected from the rectified-left 3D frame back into the raw LEFT image via R1 transpose, K1 and D1, keeping overlays physically aligned after this preview change.
+- Native Tk W title and guidance explicitly label preview as an uncropped original frozen frame.
+- Added deterministic raw pixels/frame shape/marker position, raw XYZ projection, and W startup no-remap regressions. Full repository suite and Windows hardware acceptance remain pending.
+
+Checkerboard correspondence follow-up: when the initial sample set exceeds `min_pairs_to_solve`, individual geometrically ambiguous pairs are excluded from the solve rather than forcing the entire attempt to fail; the NPZ/result records original 0-based `corner_order_rejected_indices` and the console reports human 1-based sample numbers. With 12 samples, all 12 must be trustworthy; with 16 samples and one bad pair, 15 may continue. No fixed 24 requirement. Existing robust pruning capacity is calculated from the remaining accepted samples. OpenCV fundamental solver exceptions are converted to actionable calibration diagnostics. An additional regression checks 16→15 valid frames, report and NPZ metadata.
+
+## 2026-11-03 Task005 owner-approved checkerboard correspondence repair (PR #8)
+
+- Added `calibration/correspondence.py`: reconcile LEFT/RIGHT 9x6 checkerboard corner indices using pooled epipolar RANSAC geometry over both physically legal candidate orders (`direct`, `reversed_180`) for EACH stereo capture. The fundamental-matrix fit is independent of the cameras' intrinsic matrices, physical baseline, optical-axis parallelism and nominal board square size. A reversed-majority dataset is supported; geometry-ambiguous/shuffled samples are rejected with the capture number instead of guessed.
+- Modified `RuntimeCalibration.solve` to align independent OpenCV `findChessboardCornersSB` results before `stereoCalibrate`, preserve the selected orientation through sample pruning and include `corner_order_modes`, `corner_order_reversed_count`, `corner_order_sampson_median_px` in its NPZ/result/console diagnostics.
+- Catastrophic safeguard: final mean rectified epipolar error above 25px (or nonfinite) causes solve failure BEFORE NPZ publication, rather than enabling geometries with errors of thousands of pixels. This is a high-failure gate, NOT an adjustment to the existing 3px per-joint quality threshold or a guarantee of precision.
+- No camera hardware, FOV, same-intrinsics requirement, 24-sample minimum, UI regression, downstream XYZ convention, NPZ reader or existing file overwrite changes.
+- Added deterministic synthetic tests: different camera intrinsics, converged physical cameras, 12 samples, direct/mixed/all reversed, shuffled/ambiguous rejection, full NPZ solve and previous-file preservation.
+- Full source checkout/Windows hardware verification remains outstanding. Existing invalid NPZ is NOT retroactively repaired; 2D saved calibration images would be needed to recompute it.
+
+## 2026-11-03 Task005 manual NPZ load and Save As controls
+
+- Added the `L / 加载标定 NPZ` control beside existing calibration controls, letting users pick an existing NPZ in Tk and activate it without restarting. Validation checks required stereo matrices, active capture size, persisted hash, and camera-pair caveats; failures and cancellations leave active state unchanged. Current selected NPZ name appears in the tracking summary, full path in Details.
+- Added `K / 另存标定 NPZ`: select destination folder/name, explicitly confirm overwrites, atomically copy current active NPZ, verify full byte-identical SHA-256, and **do not activate the exported backup**. Existing `P` remains internal auto-backup.
+- Tests cover archive preservation (including W registration), unsafe destination refusal, hash mismatch, atomic failure rollback, loading new NPZ then exporting, overwrite/cancel, and active-state/recording continuity. No numerical geometry or quality threshold changes.
+- Real Windows webcam and full-repository regression remain pending in the GitHub connector editing environment; these cases are committed, not claimed executed.
+
+## 2026-11-03 W world-coordinate setup: diagnostic and frozen-preview repair
+
+- Fixed: the W modal Tk camera pane was independently suffering from the same early splitter initialization as the main UI; assign a proper frozen-video viewport after first actual native layout, without altering later user drags.
+- Fixed: ArUco "recognized" label now explicitly means two-dimensional identification, not successful stereo reconstruction.
+- Replaced the generic ID/corner stereo failure with actual depth (mm), epipolar error and threshold (px), reprojection error and threshold (px), and distinct nonfinite/negative-depth/unavailable-triangulation causes; advise cancel/re-enter because frames are frozen.
+- Tests added: synthetic geometry failure reasons/thresholds and native UI one-pixel W-splitter recovery. Full stereo triangulation mathematical gates and quality limits have **not** changed; no forced registration or unsafe acceptance. Full project suite and physical Windows acceptance pending.
+
+## 2026-11-03 Task005 Windows camera pane collapsed follow-up
+
+- Owner's new screenshot shows a one-pixel-thin preview strip between the guidance and data tabs. Video capture was already shown to work in OpenCV compatibility mode; this specifically exposes a native Tk layout/splitter initialization defect, not primarily an image codec problem.
+- Native `ImagePair` frame now declares a nonzero requested starting height. `DesktopDisplay` defers initial camera/data splitter positioning until the first Tk update has laid out the actual window; a one-time initial placement preserves user control of subsequent dragging.
+- Native GUI smoke now checks real video pane and image label heights across common resolutions and mode changes, and explicitly forces the sash to one pixel before a first-paint recovery check. No camera math, NPZ, thresholds, video capture, or output protocols changed.
+- Hardware validation is outstanding on Windows; this is a code repair with unverified real-device acceptance.
+
+## 2026-11-03 Task005 Windows blank camera preview follow-up (PR #8)
+
+- Fix: native Tk live camera previews now use OpenCV PNG encoding transported to Tk PhotoImage as base64, instead of raw binary PPM.
+- Fix: redraw the cached current frame after a video label first obtains a nonzero viewport on resize/layout.
+- Tests: add PNG pixel/encoding-failure unit tests and a native Tk two-camera live-pixel/next-frame/resize regression.
+- Kept unchanged: camera capture, detection, stereo geometry, world fit, quality thresholds, NPZ, CSV and protocol behavior. Real Windows acceptance remains pending.
+
+Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
+Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
+
+# Task005 — responsive operator interface (2026-10-14)
+
+Added: optional Tk desktop presentation, Chinese context actions/help, responsive
+aspect-preserving cameras, DPI/work-area initial sizing, scrollable XYZ/diagnostics
+and calibration guidance; in-window world reference form and native smoke tool.
+Modified: runner display/key adapter and notifications; world setup input/display
+adapter only; camera picker window creation is resizable. Operator/task documents
+and presentation/lifecycle tests updated. Deleted: none.
+Behavior: buttons return existing action keys; keyboard compatibility preserved.
+Main/window-close flushes recording/releases resources. Missing Tk falls back to
+resizable OpenCV, with STEREO_POSE_UI or direct CLI selection. Guidance first,
+diagnostics in a separate tab. Native accepted XYZ rows show candidate/missing as
+blank with status rather than presenting rejected values as valid measurements.
+World form retains feature IDs/corner semantics; partial coordinates refused,
+unused blank templates omitted in full mode, first-row zero preserved. Any XYZ
+edit invalidates preview/confirmation, including uncommitted entry edits. Batched
+mode+fit events are ordered, input typing never fires action hotkeys. Manual
+capture duplicate notices retain the backend's 2-second notice lifetime.
+Numerical changes: NONE. Sixteen protected source modules, RUN_ME.py and exact
+world fit/zero/metadata/save-activation blocks verified identical to Task004.
+Protocol/config: no field/default/schema/dependency changes. Tk is optional; no
+runtime install/download. Reference CSV remains same contract; config/model/NPZ
+and recordings are retained. Physical and hardware acceptance remains pending.
+Known issues: original processing/solver remains synchronous; a long detector or
+solve can delay UI response. Windows multi-monitor DPI transitions and webcam/
+model performance are unverified. Legacy camera picker keeps original controls.
+
+## Previous task records
+
 # Task004 P0 — checkerboard auto capture repair (2026-10-13)
 
 ## Added
