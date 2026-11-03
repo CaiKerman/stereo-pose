@@ -35,7 +35,7 @@ def read_bundle(path):
         return {k: f[k].copy() for k in f.files}
 
 
-def export_calibration_npz(source, destination, *, expected_sha256=None):
+def export_calibration_npz(source, destination, *, expected_sha256=None, overwrite=False):
     """Save an identical copy of an active NPZ without changing the selection.
 
     A complete source archive is validated and its original SHA-256 checked.
@@ -53,6 +53,8 @@ def export_calibration_npz(source, destination, *, expected_sha256=None):
         raise ValueError('不能覆盖当前正在使用的 NPZ；请另选文件名')
     if target.is_symlink():
         raise ValueError('不允许覆盖符号链接形式的 NPZ 文件')
+    if target.exists() and not overwrite:
+        raise FileExistsError(f'目标 NPZ 已存在，必须明确确认覆盖：{target}')
     if not target.parent.is_dir():
         raise FileNotFoundError(f'目标文件夹不存在：{target.parent}')
     validate_stereo_bundle(read_bundle(src))
@@ -70,6 +72,8 @@ def export_calibration_npz(source, destination, *, expected_sha256=None):
             os.fsync(dst.fileno())
         if file_sha256(temporary) != source_sha or file_sha256(src) != source_sha:
             raise ValueError('NPZ 复制校验失败；目标文件未被修改')
+        if target.exists() and not overwrite:
+            raise FileExistsError(f'目标 NPZ 已存在，必须明确确认覆盖：{target}')
         os.replace(temporary,target)
         return target
     finally:
