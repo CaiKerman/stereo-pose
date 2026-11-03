@@ -1,3 +1,13 @@
+## Task005 Windows Tk live preview regression — 2026-11-03
+
+Owner reproduced blank native Tk previews; forced `STEREO_POSE_UI=opencv` restores live video. The affected presentation-only path used raw binary PPM through Tk PhotoImage. Fix: PNG/base64 frame transport and redraw after video-label viewport size becomes valid.
+
+Added unit tests in `tests/unit/test_desktop_presentation.py` for OpenCV BGR pixel round-trip through PNG, and failure handling; added native UI test in `tools/smoke_desktop_ui.py` that reads RGB pixels from real Tk PhotoImage objects across sequential LEFT/RIGHT frames and after resize.
+
+Independent isolated Tk/Xvfb demonstration in this session: 3 consecutive synthetic BGR frames rendered in 2 PhotoImage labels via PNG/base64, all 6 sampled pixel colors matched the expected RGB values. **This is not a full repository test run**. The exact repository suites and Windows/webcam hardware have not been run in this editing environment, and no new suite pass counts are claimed. Prior delivery's test counts below predate this repair.
+
+Pending acceptance: Windows Python 3.12 Tk preview, camera left/right changing independently, C calibration preview, W intentionally frozen preview then return to live view, resize and maximize, plus `python -m pytest -q` and native smoke in an environment with source checkout.
+
 Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
 Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
 
