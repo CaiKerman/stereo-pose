@@ -94,7 +94,7 @@ def tracking_view(rows, registration, *, calibrated, recording, record_status, s
         'hint':hint, 'frame':coordinate_label(registration), 'rows':readout_cells(rows,registration),
         'details':'\n'.join(([f'当前标定 NPZ：{calibration_file or "未加载"}'] + list(map(str, details)))), 'warnings':'\n'.join(map(str,warnings)),
         'notice':notice, 'record_status':record_status, 'progress':None,
-        'actions':[Action(ord('c'),'双目标定  C'), Action(ord('l'),'加载标定 NPZ  L'), Action(ord('w'),'坐标与原点  W',calibrated),
+        'actions':[Action(ord('c'),'双目标定  C'), Action(ord('l'),'加载标定 NPZ  L'), Action(ord('k'),'另存标定 NPZ  K',calibrated), Action(ord('w'),'坐标与原点  W',calibrated),
             Action(ord('t'),'停止录制  T' if recording else '开始录制  T',calibrated),
             Action(ord('f'),'关闭平滑  F' if smoothing else '开启平滑  F'),
             Action(ord('m'),'详细信息  M'), Action(ord('q'),'退出')],
