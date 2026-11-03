@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -81,18 +82,19 @@ def coordinate_label(registration):
 
 
 def tracking_view(rows, registration, *, calibrated, recording, record_status, smoothing,
-                  cameras, fps, details=(), warnings=(), notice=''):
+                  cameras, fps, details=(), warnings=(), notice='', calibration_file=None):
     hint = ('已加载双目标定。可直接读取坐标；需要改变原点或轴向时，点击「坐标与原点」。'
-            if calibrated else '尚无有效双目标定。点击「双目标定」，完整显示棋盘格并在不同姿态保持静止。')
+            if calibrated else '尚无有效双目标定。可以点击「加载标定 NPZ」选择以前保存的文件，或者重新进行双目标定。')
     meta = {} if registration is None else registration.get('metadata', {})
     if meta.get('up_reference') == 'camera_mount_assumption':
         hint += ' 默认向上基于相机水平正立安装；严格水平请设置完整坐标系。'
+    calibration_label = Path(calibration_file).name if calibration_file else '未加载 NPZ'
     return {'mode':'tracking', 'title':'实时测量',
-        'summary':f'左相机 {cameras[0]} / 右相机 {cameras[1]}  ·  {fps}  ·  {"正在录制" if recording else "未录制"}',
+        'summary':f'左相机 {cameras[0]} / 右相机 {cameras[1]}  ·  {fps}  ·  {"正在录制" if recording else "未录制"}  ·  NPZ：{calibration_label}',
         'hint':hint, 'frame':coordinate_label(registration), 'rows':readout_cells(rows,registration),
-        'details':'\n'.join(map(str, details)), 'warnings':'\n'.join(map(str,warnings)),
+        'details':'\n'.join(([f'当前标定 NPZ：{calibration_file or "未加载"}'] + list(map(str, details)))), 'warnings':'\n'.join(map(str,warnings)),
         'notice':notice, 'record_status':record_status, 'progress':None,
-        'actions':[Action(ord('c'),'双目标定  C'), Action(ord('w'),'坐标与原点  W',calibrated),
+        'actions':[Action(ord('c'),'双目标定  C'), Action(ord('l'),'加载标定 NPZ  L'), Action(ord('w'),'坐标与原点  W',calibrated),
             Action(ord('t'),'停止录制  T' if recording else '开始录制  T',calibrated),
             Action(ord('f'),'关闭平滑  F' if smoothing else '开启平滑  F'),
             Action(ord('m'),'详细信息  M'), Action(ord('q'),'退出')],
