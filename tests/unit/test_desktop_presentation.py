@@ -81,12 +81,14 @@ class TestDisplayContract(unittest.TestCase):
             smoothing=True,cameras=(1,2),fps='30fps')
         actions={a.key:a for a in without['actions']}
         self.assertTrue(actions[ord('l')].enabled)
+        self.assertFalse(actions[ord('k')].enabled)
         self.assertIn('未加载 NPZ',without['summary'])
         loaded=tracking_view([],None,calibrated=True,recording=False,record_status='OFF',
             smoothing=True,cameras=(1,2),fps='30fps',
             calibration_file='C:/stereo/calibrations/known.npz')
         self.assertIn('known.npz',loaded['summary'])
         self.assertIn('known.npz',loaded['details'])
+        self.assertTrue({a.key:a for a in loaded['actions']}[ord('k')].enabled)
 
     def test_no_calibration_disables_world_and_record_buttons(self):
         view=tracking_view([],None,calibrated=False,recording=False,record_status='OFF',smoothing=True,cameras=(1,2),fps='30fps')
