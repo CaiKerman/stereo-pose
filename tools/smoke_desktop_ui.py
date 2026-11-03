@@ -129,6 +129,24 @@ class NativeSmoke(unittest.TestCase):
         self.addCleanup(form.close)
         return form
 
+    def test_world_setup_frozen_camera_pane_starts_visible_and_recovers_from_collapse(self):
+        form=self.form()
+        form.root.update()
+        form.panes.sashpos(0,1)  # reproduce owner screenshot: only a thin divider
+        form.root.update_idletasks()
+        self.assertLess(form.pair.frame.winfo_height(),80)
+        form.show((self.image,self.image),zero=False,up=False,candidate=None,
+                  report={},error='Enter real XYZ in CSV, save it, then R=fit')
+        self.assertGreater(form.pair.frame.winfo_height(),80)
+        self.assertGreater(form.pair.labels[0].winfo_height(),20)
+        self.assertGreater(form.pair.labels[1].winfo_height(),20)
+        self.assertTrue(all(photo is not None for photo in form.pair.photos))
+        # The recovered size remains under operator control after first layout.
+        form.panes.sashpos(0,180);form.root.update_idletasks()
+        form.show((self.image,self.image),zero=False,up=False,candidate=None,
+                  report={},error='Enter real XYZ in CSV, save it, then R=fit')
+        self.assertAlmostEqual(form.panes.sashpos(0),180,delta=10)
+
     def test_typing_in_reference_entry_never_dispatches_shortcuts(self):
         form=self.form()
         entry=next(child for child in form.input.winfo_children() if child.winfo_class()=='TEntry')
