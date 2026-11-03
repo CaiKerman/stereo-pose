@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -32,6 +33,48 @@ def file_sha256(path):
 def read_bundle(path):
     with np.load(path, allow_pickle=False) as f:
         return {k: f[k].copy() for k in f.files}
+
+
+def export_calibration_npz(source, destination, *, expected_sha256=None):
+    """Save an identical copy of an active NPZ without changing the selection.
+
+    A complete source archive is validated and its original SHA-256 checked.
+    Write a temporary file alongside the destination, verify every copied byte,
+    then publish atomically. Refuse writing onto the active source or symlinks.
+    The GUI explicitly confirms overwriting an existing destination separately.
+    """
+    src=Path(source).expanduser().resolve()
+    target=Path(destination).expanduser().absolute()
+    if target.suffix.lower() != '.npz':
+        raise ValueError('另存文件必须使用 .npz 扩展名')
+    if not src.is_file():
+        raise FileNotFoundError(f'正在使用的 NPZ 文件不存在：{src}')
+    if src == target.resolve():
+        raise ValueError('不能覆盖当前正在使用的 NPZ；请另选文件名')
+    if target.is_symlink():
+        raise ValueError('不允许覆盖符号链接形式的 NPZ 文件')
+    if not target.parent.is_dir():
+        raise FileNotFoundError(f'目标文件夹不存在：{target.parent}')
+    validate_stereo_bundle(read_bundle(src))
+    source_sha=file_sha256(src)
+    if expected_sha256 and source_sha != expected_sha256:
+        raise ValueError('当前 NPZ 在运行过程中被修改；拒绝另存不一致的标定')
+    temporary=None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='wb',dir=target.parent,prefix=target.name+'.',suffix='.tmp',delete=False
+        ) as dst, src.open('rb') as origin:
+            temporary=Path(dst.name)
+            shutil.copyfileobj(origin,dst)
+            dst.flush()
+            os.fsync(dst.fileno())
+        if file_sha256(temporary) != source_sha or file_sha256(src) != source_sha:
+            raise ValueError('NPZ 复制校验失败；目标文件未被修改')
+        os.replace(temporary,target)
+        return target
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def stereo_fingerprint(bundle):
