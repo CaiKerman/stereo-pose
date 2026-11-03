@@ -1,3 +1,7 @@
+## OPEN — 2026-11-03 Windows Tk camera preview hardware acceptance
+
+Owner reported native Tk GUI lacks camera imagery while `STEREO_POSE_UI=opencv` succeeds. Existing Task005 PR #8 carries a PNG/base64 + viewport redraw repair and new tests. Pending: rerun full checkout regressions and validate real Windows left/right live previews including C/W/resize. Preserve PR topology and original measurement modules.
+
 Task005 delivery: PR #8 https://github.com/CaiKerman/stereo-pose/pull/8
 Tested implementation commit: `5bcc3135f2ebe93bf5785fef90a4ca3b0c98f738`; following completion commit changes documentation only.
 
