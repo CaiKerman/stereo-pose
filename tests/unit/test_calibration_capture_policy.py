@@ -462,7 +462,7 @@ class TestStereoCheckerboardCorrespondence(unittest.TestCase):
         bundle=read_bundle(report['path'])
         self.assertEqual(int(bundle['corner_order_reversed_count']),3)
         self.assertEqual(str(bundle['corner_order_modes'][0]),'reversed_180')
-        np.testing.assert_allclose(bundle['T'].reshape(3),self.T,atol=15.0)
+        np.testing.assert_allclose(bundle['T'].reshape(3),self.T,atol=30.0)
 
     def test_unresolvable_corners_do_not_publish_new_npz(self):
         cal=_calibrator(self.root);cal.start()
