@@ -1,3 +1,7 @@
+## OPEN — 2026-11-03 W world-coordinate alignment failed
+
+Owner W screenshot: ID 0..3 show 2D recognition, but `ID 0 corner0 fails stereo geometry` prevents 3D world registration; W frozen-video pane also collapsed. Current PR #8 adds numeric pixel/depth error reporting and deferred W splitter setup, plus tests. Actual root cause remains unknown until measured residuals become visible; do not relax quality gates or mark physical accuracy accepted. Full suite and owner hardware follow-up pending. Do not merge PR #8.
+
 ## OPEN — 2026-11-03 second Task005 Windows GUI acceptance
 
 Owner screenshot confirms main camera viewport collapsed to a thin horizontal strip above the data tabs. New UI-only layout patch pushed to existing PR #8, with a native smoke test forcing a one-pixel splitter and verifying recovery, plus normal resolution/mode visibility assertions. Wait for actual Windows video validation and full test suite; do not merge or retarget PR.
