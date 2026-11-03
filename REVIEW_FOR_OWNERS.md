@@ -1,3 +1,7 @@
+## 2026-11-03 W alignment owner blocker (open)
+
+The provided photo shows ID 0..3 markers recognized in both 2D camera images but the first marker corner rejected by 3D triangulation quality. The real root cause (failed epipolar gate vs reprojection gate vs depth/invalid triangulation) cannot be established from the old generic error. The updated error now exposes actual values and configured limits while preserving all checks. W modal preview was also collapsed; the native splitter is initialized after layout and has a regression case. Do not bypass these gates or merge PR #8 until physical stereo accuracy and GUI are accepted. Temporary diagnostic workflow: in full world-mode clear the XYZ of ID 0 to omit that reference and test the remaining three noncollinear points; this is a diagnostic only, without independent four-point redundancy.
+
 ## 2026-11-03 second Task005 hardware finding: preview pane collapsed
 
 Owner's supplied Tk screenshot has no camera area because the video pane is reduced to a thin line above the coordinate tabs. Corrective GUI-only patch declares an initial preview height and initializes the splitter once after first native paint; native smoke tests now assert actual pane/label dimensions and recovery from a 1-pixel sash. Initial manual workaround: drag the horizontal divider between guidance and tabs downward. Windows owner acceptance remains blocking for PR #8; do not merge without confirming live video and resized layouts on the actual machine. No stereo/quality/world registration changes.
