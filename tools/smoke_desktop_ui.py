@@ -54,6 +54,26 @@ class NativeSmoke(unittest.TestCase):
                     self.assertIsNotNone(photo)
                     self.assertLessEqual(abs(photo.width()-photo.height()*640/360),2)
 
+    def test_camera_viewport_starts_visible_and_survives_mode_changes(self):
+        # Regression for owner Windows screenshot: live video pane was only a
+        # thin strip above the coordinate table, despite valid camera frames.
+        for width,height in ((1320,900),(1024,768),(800,600)):
+            with self.subTest(size=(width,height)):
+                self.ui.root.geometry(f'{width}x{height}')
+                self.ui.show(pair=(self.image,self.image),view=self.view)
+                self.ui.show(pair=(self.image,self.image),view=self.view)
+                self.assertGreater(self.ui.pair.frame.winfo_height(), 80)
+                self.assertGreater(self.ui.pair.labels[0].winfo_height(), 20)
+                self.assertGreater(self.ui.pair.labels[1].winfo_height(), 20)
+                self.assertGreater(self.ui.panes.sashpos(0), 80)
+        cal=SimpleNamespace(current={'capture_reason':'insufficient_observations'},samples=[],
+            can_solve=lambda:False,target_pairs=24,min_pairs=12,auto_capture=True,
+            diversity_threshold=.12,readiness=lambda:0)
+        self.ui.show(pair=(self.image,self.image),view=calibration_view(cal))
+        self.assertGreater(self.ui.pair.frame.winfo_height(), 80)
+        self.ui.show(pair=(self.image,self.image),view=self.view)
+        self.assertGreater(self.ui.pair.frame.winfo_height(), 80)
+
     def test_camera_preview_is_visible_and_follows_each_new_frame(self):
         # Previous checks only saw that an image object existed, not its pixels.
         self.ui.show(pair=(self.image,self.image),view=self.view)
