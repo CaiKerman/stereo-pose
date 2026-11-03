@@ -1,3 +1,11 @@
+## Task005 manual NPZ controls — 2026-11-03
+
+New operator UI actions: `L` opens a native file picker, validates the exact saved calibration NPZ, confirms camera pairing before activation, and displays the active file name/path; `K` opens Save As for a byte-for-byte NPZ copy. Export verifies the source against the selected active SHA-256, writes a temporary file in the chosen directory, checks copy hash and publishes using `os.replace`; explicit overwrite permission is required. Neither export nor cancel changes the currently selected calibration.
+
+New tests committed: in `tests/unit/test_world_alignment.py`, byte-identical full W NPZ export, matching SHA, same-source/extension/hash mismatch rejection, existing file protection, confirmed overwrite and failure rollback; in `tests/integration/test_task003_runtime.py`, manual Load action, Save As without state changes, Load-then-Save, cancel/confirmation and existing-target behavior, CSV continuity; `tests/unit/test_desktop_presentation.py` checks L always available and K disabled without an active NPZ.
+
+**Execution status:** full source checkout, pytest/unittest and physical Windows Tk webcam validation were not available through the connector in this turn. No claim that all newly added tests have passed. Previous reported suite counts predate these changes. Operator acceptance should check exact source file path, loading a previous W NPZ, W rotation/depth, Save As SHA equality, re-start selection persistence, cancel and overwrite behavior.
+
 ## 2026-11-03 Task005 W alignment regression
 
 Owner's W screenshot shows four marker IDs with "success" in the 2D detection table while `ID 0 corner0 fails stereo geometry` prevents any rigid fit. The frozen camera pane is simultaneously collapsed to the splitter line. These are independent symptoms: rendering/layout and stereo quality gating. This change does not claim the stored calibration is valid or the stereo failure has been resolved.
