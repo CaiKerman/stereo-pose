@@ -21,6 +21,7 @@ import numpy as np
 from stereo_pose.persistence.paths import auto_dir
 from stereo_pose.calibration.package import atomic_npz
 from stereo_pose.calibration.stability import BoardStability, align_corner_order
+from stereo_pose.calibration.correspondence import normalize_stereo_pairs
 
 _SCHEMA_VERSION = "1"
 
@@ -436,6 +437,18 @@ class RuntimeCalibration:
             raise RuntimeError(f"Only {len(objpoints)} saved pairs usable; need {self.min_pairs}")
 
         initial_count = len(objpoints)
+        # OpenCV's independent left/right checkerboard detections can use
+        # opposite (180-degree) physical corner orders. Never send unmatched
+        # index pairs to stereoCalibrate: reconcile on raw stereo geometry first.
+        # This does not use matching intrinsics, parallel cameras, or square_mm.
+        img_r, corner_alignment = normalize_stereo_pairs(img_l, img_r)
+        corner_modes = list(corner_alignment["modes"])
+        print(
+            f'[calibration] corner correspondence: '
+            f'direct={len(corner_modes)-corner_alignment["reversed_count"]}, '
+            f'reversed_180={corner_alignment["reversed_count"]}, '
+            f'median Sampson={corner_alignment["median_sampson_px"]:.3f}px'
+        )
         solution = self._solve_core(objpoints, img_l, img_r, image_size)
         epi = self._sample_epipolar_errors(solution, img_l, img_r)
         pruned_count = 0
@@ -460,6 +473,7 @@ class RuntimeCalibration:
                 img_l = [img_l[i] for i in keep]
                 img_r = [img_r[i] for i in keep]
                 paths = [paths[i] for i in keep]
+                corner_modes = [corner_modes[i] for i in keep]
                 pruned_count = len(bad)
                 solution = self._solve_core(objpoints, img_l, img_r, image_size)
                 epi = self._sample_epipolar_errors(solution, img_l, img_r)
@@ -470,6 +484,17 @@ class RuntimeCalibration:
 
         epi_mean = float(np.mean(epi)) if len(epi) else float("nan")
         epi_max = float(np.max(epi)) if len(epi) else float("nan")
+        # The previous implementation published unusable NPZs even when the
+        # computed rectification sent all pixels out of view. Reject only
+        # catastrophic failures here; do NOT replace runtime 3px gating or
+        # impose a fixed 24-sample minimum.
+        if not np.isfinite(epi_mean) or not np.isfinite(epi_max) or epi_mean > 25.0:
+            raise ValueError(
+                f'双目求解结果未通过几何检查：样本平均极线误差 '
+                f'{epi_mean:.2f}px，最大 {epi_max:.2f}px。'
+                '角点对应已检查，但内参与姿态求解仍不一致；'
+                '本次不生成/启用 NPZ，原标定保持不变。'
+            )
 
         out_dir = auto_dir(self.calibration_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -493,6 +518,9 @@ class RuntimeCalibration:
             "pruned_count": np.array(pruned_count),
             "sample_epipolar_mean_px": np.array(epi_mean),
             "sample_epipolar_max_px": np.array(epi_max),
+            "corner_order_modes": np.asarray(corner_modes, dtype=str),
+            "corner_order_reversed_count": np.array(corner_modes.count("reversed_180")),
+            "corner_order_sampson_median_px": np.array(corner_alignment["median_sampson_px"]),
             "readiness": np.array(self.readiness()),
             "created_at": np.array(stamp),
             "_schema_version": np.array(_SCHEMA_VERSION),
@@ -509,6 +537,9 @@ class RuntimeCalibration:
             "pruned_count": pruned_count,
             "sample_epipolar_mean_px": epi_mean,
             "sample_epipolar_max_px": epi_max,
+            "corner_order_modes": corner_modes,
+            "corner_order_reversed_count": corner_modes.count("reversed_180"),
+            "corner_order_sampson_median_px": corner_alignment["median_sampson_px"],
             "readiness": self.readiness(),
             "T": solution["T"].reshape(-1).astype(float),
         }
@@ -521,6 +552,7 @@ class RuntimeCalibration:
         print(
             f"[calibration] saved {out} | Stereo RMS={solution['stereo_rms']:.4f} | "
             f"sample epipolar mean/max={epi_mean:.3f}/{epi_max:.3f}px | "
+            f"corner_order reversed={corner_modes.count('reversed_180')} | "
             f"samples={len(objpoints)}"
         )
         return result
