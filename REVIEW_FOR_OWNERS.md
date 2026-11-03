@@ -1,3 +1,7 @@
+## 2026-11-03 World dialog viewer crop issue
+
+Owner photo showed missing ArUco target in W while visible in full live preview. Diagnosed unconditional full-frame NPZ rectification/zoom in W `world_setup.py`. GUI-only fix shows raw frozen full FOV, draws raw marker outlines and reverse-projects 3D coordinate axes to raw left pixels; internal 3D triangulation remains on the same rectified coordinates. Numerical sensor quality claims are unchanged: previous 14+px measured epipolar errors still need independent diagnosis; do not silently relax 3px quality gate. Full Windows camera acceptance and repository tests pending. Existing PR #8 open.
+
 Follow-up acceptance detail: pairs with unresolvable correspondence are excluded only if the remaining sample count still satisfies the original 12-pair minimum, logged with per-frame indices in NPZ metadata. If insufficient, the solver refuses publication. No camera-model or angle restriction introduced.
 
 ## 2026-11-03 — Numerical calibration repair: owner hardware acceptance required
