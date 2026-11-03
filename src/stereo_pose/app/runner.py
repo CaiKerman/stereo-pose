@@ -27,7 +27,7 @@ from stereo_pose.app.measurements import measure_frame, make_readout, append_rea
 from stereo_pose.app.world_setup import run_world_setup
 from stereo_pose.app.desktop import create_display
 from stereo_pose.app.presentation import tracking_view, calibration_view
-from stereo_pose.calibration.package import load_readout_registration, activate_calibration, file_sha256, read_bundle, validate_stereo_bundle
+from stereo_pose.calibration.package import load_readout_registration, activate_calibration, file_sha256, read_bundle, validate_stereo_bundle, export_calibration_npz
 from stereo_pose.filtering import JointSmoother
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, resolve_joints
@@ -585,6 +585,26 @@ def _run(args, cfg, resources):
             if key in (ord("c"), ord("C")):
                 recorder.stop("enter_calibration")
                 calibrator.start()
+            elif key in (ord("k"), ord("K")):
+                if calib_path is None or active_artifact_sha is None:
+                    display.notify('尚未加载有效双目标定；请先加载或通过 C → R 创建 NPZ。')
+                elif not display.native:
+                    display.notify('OpenCV 兼容界面不支持文件选择窗口；请使用新版桌面界面另存 NPZ。')
+                else:
+                    try:
+                        destination = display.save_calibration_file(calib_path)
+                        if destination:
+                            target=Path(destination).expanduser()
+                            if target.is_file() and not display.confirm_npz_overwrite(target):
+                                display.notify('取消覆盖；原 NPZ 和目标文件均保持不变。')
+                            else:
+                                saved=export_calibration_npz(
+                                    calib_path, target, expected_sha256=active_artifact_sha)
+                                display.notify(f'已另存完整 NPZ：{saved}；当前使用的标定未改变。')
+                                print(f'[calibration] EXPORTED NPZ: {saved}; active remains {calib_path}')
+                    except Exception as error:
+                        display.notify(f'另存 NPZ 失败，原标定保持不变：{error}')
+                        print('[calibration] NPZ export rejected; active calibration retained:',error)
             elif key in (ord("l"), ord("L")):
                 if not display.native:
                     print('[calibration] 兼容模式请在 config.json 中设置 stereo.load=explicit 与 stereo.explicit_file，再重启')
