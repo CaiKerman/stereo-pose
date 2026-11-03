@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import os
 import sys
+from pathlib import Path
 from collections import deque
 
 import cv2
@@ -347,7 +348,7 @@ class DesktopDisplay:
         if event.keysym=='Escape':key=27
         elif event.char and len(event.char)==1:key=ord(event.char.lower())
         else:return
-        if key in map(ord,'cw tfmgpdvsqrx'.replace(' ','')) or key in (27,ord(' ')):
+        if key in map(ord,'clw tfmgpdvsqrx'.replace(' ','')) or key in (27,ord(' ')):
             self.pending.offer(key,keyboard=True)
             return 'break'
 
@@ -409,6 +410,31 @@ class DesktopDisplay:
             self._initialize_preview_split()
         except self.tk.TclError:self.closed=True
         return ord('q') if self.closed else self.pending.take()
+
+    def choose_calibration_file(self, initialdir=None):
+        """Choose an existing NPZ; file validation and activation live in runner."""
+        from tkinter import filedialog
+        picked = filedialog.askopenfilename(
+            parent=self.root,
+            title='选择上次保存的双目标定 NPZ 文件',
+            initialdir=str(initialdir or Path.cwd()),
+            filetypes=[('标定文件 NPZ', '*.npz'), ('所有文件', '*.*')],
+        )
+        return picked or None
+
+    def confirm_calibration_file(self, path, warnings=()):
+        from tkinter import messagebox
+        notes='\n'.join(str(x) for x in warnings)
+        message=(
+            f'准备加载双目标定文件：\n{path}\n\n'
+            '必须确认当前 LEFT/RIGHT 对应原来同一对物理摄像头，'
+            '且它们的安装位置和方向未改变。\n'
+            '编号相同不代表安装一定相同。'
+        )
+        if notes:
+            message+=f'\n\n需要注意：\n{notes}'
+        message+='\n\n确认切换为这份标定并立即应用吗？'
+        return messagebox.askyesno('确认加载 NPZ 标定',message,parent=self.root)
 
     def notify(self,message):
         self.notice=str(message)
