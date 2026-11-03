@@ -1,3 +1,11 @@
+## 2026-11-03 Task005 W alignment regression
+
+Owner's W screenshot shows four marker IDs with "success" in the 2D detection table while `ID 0 corner0 fails stereo geometry` prevents any rigid fit. The frozen camera pane is simultaneously collapsed to the splitter line. These are independent symptoms: rendering/layout and stereo quality gating. This change does not claim the stored calibration is valid or the stereo failure has been resolved.
+
+New synthetic unit scenarios added in `tests/unit/test_world_alignment.py`: triangulation unavailable, epipolar error above configured bound, reprojection error above configured bound, negative depth; each test expects ID/corner identification, measured quality/limits, and advice that the frame is frozen. New native Tk smoke in `tools/smoke_desktop_ui.py` deliberately collapses the W splitter and expects restored visible image labels; manual splitter changes are preserved. Correspondence/triangulation acceptance policy itself remains unchanged.
+
+**Unverified:** no full test suite or actual owner Windows camera runtime execution occurred in this connector-based patch turn. The prior test counts elsewhere in this report do not validate these new changes. Recommended: `py -3.12 -m pytest -q` with `PYTHONPATH=src;.` on Windows and the Tk smoke in a GUI environment. Then test W > identify four markers > R; record exact measured epipolar/reprojection/depth diagnostics and compare camera pose/calibration before modifying thresholds.
+
 ## Task005 Windows collapsed preview pane regression — 2026-11-03
 
 Owner screenshot after earlier PNG transport patch shows the camera pane collapsed to a thin splitter (~Y=210), with the coordinates table taking nearly all remaining height. Added layout safeguards in `app/desktop.py`: minimum requested preview-frame height and delayed first-paint sash placement (52% of actual pane height). Added native Tk smoke cases to measure the actual rendered preview/frame label heights in several viewport sizes and recover from a deliberately forced 1-pixel sash.
