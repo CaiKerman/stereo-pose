@@ -32,7 +32,7 @@ class TestTrackingLifecycle(unittest.TestCase):
             q=np.c_[xyz,np.ones(17)]@P.T;return q[:,:2]/q[:,2:]
         self.L=proj(self.tri.P1);self.R=proj(self.tri.P2);self.image=np.zeros((720,1280,3),np.uint8)
 
-    def execute(self, keys, calibration_solve=None, world_result=None, native=False):
+    def execute(self, keys, calibration_solve=None, world_result=None, native=False, selected_npz=None, confirm_npz=True):
         from stereo_pose.app.measurements import append_readout
         self.readout_registrations = []
         def draw_readout(canvas, rows, registration, *args, **kwargs):
@@ -64,6 +64,8 @@ class TestTrackingLifecycle(unittest.TestCase):
         if native:
             display=Mock();display.native=True
             display.show.side_effect=keys
+            display.choose_calibration_file.return_value=selected_npz
+            display.confirm_calibration_file.return_value=confirm_npz
             self.display_for_test=display
         count={'i':0};clock={'t':0}
         def pair(*a,**kw):
@@ -90,6 +92,51 @@ class TestTrackingLifecycle(unittest.TestCase):
         self.assertEqual(read.call_count,len(keys));self.assertEqual(estimator.infer_pair.call_count,len(keys)-calibrator.process.call_count)
         self.assertEqual(camera.release.call_count,2);publisher.close.assert_called_once()
         return publisher,wizard
+
+    def test_select_saved_npz_activates_exact_file_and_updates_live_status(self):
+        selected=synthetic_calibration(self.root/'saved_selection.npz')
+        old=self.cal
+        self.execute([ord('l'),ord('t'),0,ord('q')],native=True,selected_npz=str(selected))
+        config=load_config(self.args.config)
+        self.assertEqual(config['stereo']['load'],'explicit')
+        self.assertEqual(config['stereo']['explicit_file'],str(selected.resolve()))
+        self.assertEqual(len(config['stereo']['active_sha256']),64)
+        self.display_for_test.confirm_calibration_file.assert_called_once()
+        views=[call.kwargs['view'] for call in self.display_for_test.show.call_args_list]
+        self.assertIn(Path(old).name,views[0]['summary'])
+        self.assertIn(selected.name,views[1]['summary'])
+        meta=json.loads(next((self.root/'recordings').glob('session_*/session.json')).read_text())
+        self.assertEqual(meta['calibration_file'],str(selected.resolve()))
+
+    def test_invalid_selected_npz_keeps_running_file_and_config(self):
+        other=synthetic_calibration(self.root/'incompatible.npz')
+        with np.load(other,allow_pickle=False) as archive:
+            fields={key:archive[key] for key in archive.files}
+        fields['image_size']=np.array([640,480])
+        np.savez(other,**fields)
+        before=Path(self.args.config).read_bytes()
+        self.execute([ord('l'),ord('q')],native=True,selected_npz=str(other))
+        self.assertEqual(Path(self.args.config).read_bytes(),before)
+        self.display_for_test.confirm_calibration_file.assert_not_called()
+        self.assertIn('分辨率',self.display_for_test.notify.call_args.args[0])
+        self.assertIn(self.cal.name,self.display_for_test.show.call_args_list[-1].kwargs['view']['summary'])
+
+    def test_cancel_npz_picker_or_confirmation_keeps_current_selection(self):
+        for selected,confirmed in [(None,True),(str(self.cal),False)]:
+            with self.subTest(selected=selected):
+                original=Path(self.args.config).read_bytes()
+                self.execute([ord('l'),ord('q')],native=True,selected_npz=selected,confirm_npz=confirmed)
+                self.assertEqual(Path(self.args.config).read_bytes(),original)
+
+    def test_switch_npz_segments_existing_csv_recording(self):
+        new=synthetic_calibration(self.root/'switch_during_recording.npz')
+        self.execute([ord('t'),0,ord('l'),ord('t'),0,ord('q')],
+                     native=True,selected_npz=str(new))
+        metas=sorted((self.root/'recordings').glob('session_*/session.json'))
+        self.assertEqual(len(metas),2)
+        contents=[json.loads(path.read_text()) for path in metas]
+        self.assertEqual({record['calibration_file'] for record in contents},{str(self.cal),str(new.resolve())})
+        self.assertIn('calibration_switched',{record['stop_reason'] for record in contents})
 
     def test_native_buttons_run_original_calibration_manual_and_return_handlers(self):
         self.execute([ord('c'),ord(' '),ord('c'),ord('q')],native=True)
