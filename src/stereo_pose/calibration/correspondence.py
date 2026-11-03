@@ -69,9 +69,15 @@ def normalize_stereo_pairs(left_pairs, right_pairs, *, threshold_px=3.0,
     pool_right = np.concatenate(
         [np.concatenate([r, r[::-1]]) for r in right]
     )
-    F, _mask = cv2.findFundamentalMat(
-        pool_left, pool_right, cv2.FM_RANSAC, 1.5, 0.999, 15000
-    )
+    try:
+        F, _mask = cv2.findFundamentalMat(
+            pool_left, pool_right, cv2.FM_RANSAC, 1.5, 0.999, 15000
+        )
+    except cv2.error as error:
+        raise CornerCorrespondenceError(
+            "左右棋盘格的极线模型求解失败；检查角点质量与姿态覆盖，"
+            "原标定文件保持不变"
+        ) from error
     if F is None or F.shape != (3, 3) or not np.isfinite(F).all():
         raise CornerCorrespondenceError(
             "多组棋盘格无法形成稳定的左右极线关系；请检查角点编号/样本姿态，"
