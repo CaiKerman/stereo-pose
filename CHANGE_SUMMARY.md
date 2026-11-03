@@ -1,3 +1,12 @@
+## 2026-11-03 Task005 owner-approved checkerboard correspondence repair (PR #8)
+
+- Added `calibration/correspondence.py`: reconcile LEFT/RIGHT 9x6 checkerboard corner indices using pooled epipolar RANSAC geometry over both physically legal candidate orders (`direct`, `reversed_180`) for EACH stereo capture. The fundamental-matrix fit is independent of the cameras' intrinsic matrices, physical baseline, optical-axis parallelism and nominal board square size. A reversed-majority dataset is supported; geometry-ambiguous/shuffled samples are rejected with the capture number instead of guessed.
+- Modified `RuntimeCalibration.solve` to align independent OpenCV `findChessboardCornersSB` results before `stereoCalibrate`, preserve the selected orientation through sample pruning and include `corner_order_modes`, `corner_order_reversed_count`, `corner_order_sampson_median_px` in its NPZ/result/console diagnostics.
+- Catastrophic safeguard: final mean rectified epipolar error above 25px (or nonfinite) causes solve failure BEFORE NPZ publication, rather than enabling geometries with errors of thousands of pixels. This is a high-failure gate, NOT an adjustment to the existing 3px per-joint quality threshold or a guarantee of precision.
+- No camera hardware, FOV, same-intrinsics requirement, 24-sample minimum, UI regression, downstream XYZ convention, NPZ reader or existing file overwrite changes.
+- Added deterministic synthetic tests: different camera intrinsics, converged physical cameras, 12 samples, direct/mixed/all reversed, shuffled/ambiguous rejection, full NPZ solve and previous-file preservation.
+- Full source checkout/Windows hardware verification remains outstanding. Existing invalid NPZ is NOT retroactively repaired; 2D saved calibration images would be needed to recompute it.
+
 ## 2026-11-03 Task005 manual NPZ load and Save As controls
 
 - Added the `L / 加载标定 NPZ` control beside existing calibration controls, letting users pick an existing NPZ in Tk and activate it without restarting. Validation checks required stereo matrices, active capture size, persisted hash, and camera-pair caveats; failures and cancellations leave active state unchanged. Current selected NPZ name appears in the tracking summary, full path in Details.
