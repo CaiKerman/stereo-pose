@@ -54,6 +54,22 @@ class NativeSmoke(unittest.TestCase):
                     self.assertIsNotNone(photo)
                     self.assertLessEqual(abs(photo.width()-photo.height()*640/360),2)
 
+    def test_camera_preview_is_visible_and_follows_each_new_frame(self):
+        # Previous checks only saw that an image object existed, not its pixels.
+        self.ui.show(pair=(self.image,self.image),view=self.view)
+        for photo in self.ui.pair.photos:
+            self.assertIsNotNone(photo)
+            self.assertEqual(tuple(photo.get(photo.width()//2,photo.height()//2)),(20,30,45))
+        newer=self.image.copy();newer[:]=[12,140,238]
+        self.ui.show(pair=(newer,self.image),view=self.view)
+        left,right=self.ui.pair.photos
+        self.assertEqual(tuple(left.get(left.width()//2,left.height()//2)),(238,140,12))
+        self.assertEqual(tuple(right.get(right.width()//2,right.height()//2)),(20,30,45))
+        self.ui.root.geometry('800x600')
+        self.ui.show(pair=(newer,self.image),view=self.view)
+        self.ui.show(pair=(newer,self.image),view=self.view)
+        self.assertEqual(tuple(self.ui.pair.photos[0].get(3,3)),(238,140,12))
+
     def test_button_and_keyboard_dispatch_once(self):
         self.ui.buttons[0].invoke()
         self.assertEqual(self.ui.show(pair=(self.image,self.image),view=self.view),ord('c'))
