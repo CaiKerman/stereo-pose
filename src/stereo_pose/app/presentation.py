@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import math
+
+from stereo_pose.geometry.projection import MODEL_LABELS
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -82,13 +84,16 @@ def coordinate_label(registration):
 
 
 def tracking_view(rows, registration, *, calibrated, recording, record_status, smoothing,
-                  cameras, fps, details=(), warnings=(), notice='', calibration_file=None):
+                  cameras, fps, details=(), warnings=(), notice='', calibration_file=None, model=None):
     hint = ('已加载双目标定。可直接读取坐标；需要改变原点或轴向时，点击「坐标与原点」。'
             if calibrated else '尚无有效双目标定。可以点击「加载标定 NPZ」选择以前保存的文件，或者重新进行双目标定。')
     meta = {} if registration is None else registration.get('metadata', {})
     if meta.get('up_reference') == 'camera_mount_assumption':
         hint += ' 默认向上基于相机水平正立安装；严格水平请设置完整坐标系。'
     calibration_label = Path(calibration_file).name if calibration_file else '未加载 NPZ'
+    model_label = MODEL_LABELS.get(model, '')
+    if model_label:
+        calibration_label = f'{model_label} · {calibration_label}'
     return {'mode':'tracking', 'title':'实时测量',
         'summary':f'左相机 {cameras[0]} / 右相机 {cameras[1]}  ·  {fps}  ·  {"正在录制" if recording else "未录制"}  ·  NPZ：{calibration_label}',
         'hint':hint, 'frame':coordinate_label(registration), 'rows':readout_cells(rows,registration),
@@ -100,10 +105,13 @@ def tracking_view(rows, registration, *, calibrated, recording, record_status, s
             Action(ord('m'),'详细信息  M'), Action(ord('q'),'退出')],
         'extra_actions':[Action(ord('s'),'保存诊断快照  S'), Action(ord('v'),'检查棋盘尺寸  V',calibrated),
             Action(ord('p'),'保留当前标定副本  P',calibrated),Action(ord('d'),'切换终端诊断  D'),
-            Action(ord('g'),'清理项目临时数据  G')]}
+            Action(ord('g'),'清理项目临时数据  G'), Action(ord('o'),'打开已有棋盘数据  O'),
+            Action(ord('b'),'记录相机输出设置  B'),
+            Action(ord('h'),'切换原始 / 矫正预览  H',calibrated)]}
 
 
 CAPTURE_REASONS = {
+    'dataset_frozen':'本次棋盘样本已封存，可反复求解。采集新样本请返回后重新进入 C。',
     'detection_failed':'左右画面都需要完整识别棋盘格。',
     'board_too_small':'棋盘格在画面中太小，请靠近一些。',
     'insufficient_observations':'正在积累有效检测，请继续保持静止。',
@@ -121,12 +129,13 @@ CAPTURE_REASONS = {
     'duplicate_observation':'等待新的观测数据。', 'ready':'条件满足，可以采样。'}
 
 
-def calibration_view(calibrator, *, notice=''):
+def calibration_view(calibrator, *, notice='', options=None, active_file=None, active_model=None):
     cur = calibrator.current or {}
     def number(key, unit=''):
         value = cur.get(key)
         return '—' if value is None else f'{float(value):.2f}{unit}'
-    count = len(calibrator.samples)
+    dataset = calibrator.dataset if options is not None else None
+    count = len(dataset.aligned_right) if dataset is not None else len(calibrator.samples)
     ready = calibrator.can_solve()
     progress = cur.get('stability_progress', 0)
     progress = min(1., max(0., float(progress))) if math.isfinite(float(progress)) else 0.
@@ -150,12 +159,40 @@ def calibration_view(calibrator, *, notice=''):
                 '采样图片保存失败：'+last if last.startswith('CAPTURE FAILED') else
                 f'{"手动" if last.startswith("MANUAL") else "自动"}采样成功，当前共 {count} 对。')
         notice='\n'.join(x for x in (notice,recent) if x)
+    candidate = None
+    if options is not None:
+        model, _, preview = options
+        candidate = calibrator.results.get((model, 0))
+        details.insert(0, f'正在使用的 NPZ：{MODEL_LABELS.get(active_model, "")} {active_file or "无"}')
+        details.insert(1, f'数据集：{dataset.path if dataset else "待首次计算时保存"}')
+        for key, label in MODEL_LABELS.items():
+            item = calibrator.results.get((key, 0))
+            failure = calibrator.failures.get((key, 0))
+            if item:
+                quality = item['quality']
+                report = quality.get('holdout', {}).get('framing', {}).get('0', {})
+                p95 = report.get('epipolar_px', {}).get('p95')
+                split = f'留出极线 P95 {p95:.2f}px' if p95 is not None else quality['holdout_status']
+                bad = [item['mapping'][side]['invalid_grid_count'] for side in ('left', 'right')]
+                details.append(f'{label}：RMS {item["stereo_rms"]:.3f}px｜{split}｜逆解失效网格 左/右 {bad[0]}/{bad[1]}')
+                details.append(f'  NPZ {item["path"]}｜报告 {item["report_path"]}')
+            if failure:
+                details.append(f'{label}：最近求解失败 {failure}')
+        hint += ' 原始画面用于采样；矫正取景只改变显示。'
+        if preview and not candidate:
+            hint += ' 暂无所选模型的矫正图，当前显示原始画面。'
+    actions = [Action(ord(' '), '手动采样  SPACE', dataset is None and bool(cur.get('valid') and cur.get('good_area'))),
+               Action(ord('r'), '计算所选方案  R' if options is not None else '计算标定  R', ready)]
+    if options is not None:
+        actions.append(Action(ord('a'), '启用所选标定  A', candidate is not None))
+    actions.extend([Action(ord('c'), '返回测量  C'),
+                    Action(ord('x'), '丢弃本次采样  X', dataset is None), Action(ord('q'), '退出')])
     return {'mode':'calibration', 'title':'双目标定 · 采集棋盘格',
         'summary':f'已采集 {count} / 目标 {calibrator.target_pairs}  ·  求解至少 {calibrator.min_pairs}  ·  自动采样 {"开启" if calibrator.auto_capture else "关闭"}',
-        'hint':hint, 'frame':'1 放好棋盘 → 2 换姿态并静止 → 3 求解 → 返回实时测量',
+        'hint':hint, 'frame':'1 放好棋盘 → 2 换姿态并静止 → 3 求解 → 4 启用方案',
+        'projection_options': options,
         'rows':[], 'details':'\n'.join(details), 'warnings':'', 'notice':notice,
         'record_status':f'左侧识别：{"成功" if cur.get("detected_left") else "未识别"}  /  右侧识别：{"成功" if cur.get("detected_right") else "未识别"}',
         'progress':progress*100,
-        'actions':[Action(ord(' '),'手动采样  SPACE', bool(cur.get('valid') and cur.get('good_area'))),
-            Action(ord('r'),'计算标定  R',ready),Action(ord('c'),'返回测量  C'),
-            Action(ord('x'),'丢弃本次采样  X'),Action(ord('q'),'退出')], 'extra_actions':[]}
+        'actions':actions, 'extra_actions':([Action(ord('j'),'记录固定棋盘位置  J',bool(cur.get('stable'))),
+            Action(ord('o'),'打开已有棋盘数据  O')] if options is not None else [])}

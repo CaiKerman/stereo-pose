@@ -135,3 +135,46 @@ def normalize_stereo_pairs(left_pairs, right_pairs, *, threshold_px=3.0,
         )),
         "pair_scores_px": scores,
     }
+
+
+def prepare_stereo_pairs(objects, left, right, image_size, minimum):
+    """Use the existing raw test first, with a shared wide-angle fallback.
+
+    Provisional single-camera fits can use independently reversed boards: a
+    180-degree board rotation changes only its per-view pose. They are used
+    solely to check correspondence in an approximately undistorted domain,
+    and none of their parameters enter model training or held-out scoring.
+    """
+    from stereo_pose.calibration.model_fit import fit_fisheye_intrinsics
+    from stereo_pose.geometry.projection import RawCamera
+
+    raw = None
+    try:
+        raw = normalize_stereo_pairs(left, right, min_good_pairs=minimum)
+        raw[1]['coordinate_basis'] = 'raw_pixels'
+        if not raw[1]['rejected_indices']:
+            return raw
+    except CornerCorrespondenceError as error:
+        raw_error = error
+    try:
+        undistorted = []
+        for points in (left, right):
+            _, K, D = fit_fisheye_intrinsics(objects, points, image_size)
+            camera = RawCamera('fisheye', K, D, image_size)
+            count = len(points)
+            rays, _ = camera.inverse(np.concatenate(points))
+            undistorted.append((rays @ K[:2, :2].T + K[:2, 2]).reshape(count, -1, 2))
+        _, report = normalize_stereo_pairs(*undistorted, min_good_pairs=minimum)
+        if raw is not None:
+            prior = dict(zip(raw[1]['accepted_indices'], raw[1]['modes']))
+            if (len(report['accepted_indices']) <= len(prior) or any(
+                    prior.get(i, mode) != mode for i, mode in zip(report['accepted_indices'], report['modes']))):
+                return raw
+        report['coordinate_basis'] = 'provisional_fisheye_undistorted_pixels'
+        corrected = [(right[i] if mode == 'direct' else right[i][::-1]).copy()
+                     for i, mode in zip(report['accepted_indices'], report['modes'])]
+        return corrected, report
+    except (cv2.error, ValueError, np.linalg.LinAlgError) as error:
+        if raw is not None:
+            return raw
+        raise CornerCorrespondenceError(f'{raw_error}；广角对应检查也未通过：{error}') from error

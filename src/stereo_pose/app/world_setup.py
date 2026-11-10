@@ -6,6 +6,9 @@ import subprocess
 from pathlib import Path
 import cv2
 import numpy as np
+
+from stereo_pose.calibration.experiment import preview_pair
+from stereo_pose.geometry.projection import project_points
 from stereo_pose.calibration.package import activate_calibration, save_registered, read_bundle
 from stereo_pose.coordinates.rigid import fit_rigid, relative_origin
 from stereo_pose.coordinates.markers import detect_markers, read_references, match_features
@@ -33,12 +36,8 @@ def world_axis_pixels_raw(transform, triangulator, length=100., anchor_world=(0.
     original_xyz = (np.asarray(triangulator.R1,dtype=float).T @ rectified_xyz.T).T
     if not np.all(np.isfinite(original_xyz)) or np.any(original_xyz[:,2] <= 0):
         return None
-    uv, _ = cv2.projectPoints(
-        original_xyz.reshape(-1,1,3),
-        np.zeros(3),np.zeros(3),
-        triangulator.K1,triangulator.D1
-    )
-    uv = uv.reshape(-1,2)
+    uv = project_points(getattr(triangulator, 'camera_model', 'pinhole'),
+                        original_xyz, triangulator.K1, triangulator.D1)
     return uv if np.all(np.isfinite(uv)) else None
 
 
@@ -93,9 +92,8 @@ def run_world_setup(*, frame_left, frame_right, triangulator, calib_path, config
     if os.name=='nt' and desktop is None:
         try: subprocess.Popen(['notepad.exe',str(reference.resolve())])
         except OSError as e: print(f'[world] open CSV manually: {e}')
-    # W is an operator reference-identification task, not a rectification
-    # preview. Always preserve the complete raw FOV and mark raw pixel corners.
-    # Rectification remains inside triangulator.triangulate_with_quality().
+    # Start with the complete raw FOV and raw corner labels. The optional
+    # display remap happens after annotations; detector/fitter inputs stay raw.
     frames=raw_frozen_markers(frame_left,frame_right,left,right)
     fit=None;candidate=None;up=False;zero=False;error='Enter real XYZ in CSV, save it, then R=fit'; report={}; naming=False
     name=world['coordinate_name']
@@ -118,6 +116,8 @@ def _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,
                 fit,candidate,up,zero,error,report,naming,name,dialog=None):
     world=cfg['world']
     window_ready=False
+    rectified_preview = False
+    preview_maps = None
     while True:
         a,b=[x.copy() for x in frames]
         if candidate is not None:
@@ -127,10 +127,18 @@ def _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,
                 origin=tuple(np.round(pixels[0]).astype(int))
                 for i,(color,label) in enumerate([((0,0,255),'+X'),((0,255,0),'+Y'),((255,0,0),'+Z')],1):
                     tip=tuple(np.round(pixels[i]).astype(int));cv2.arrowedLine(a,origin,tip,color,2);cv2.putText(a,label,tip,cv2.FONT_HERSHEY_SIMPLEX,.7,color,2)
+        if rectified_preview:
+            try:
+                (a, b), preview_maps = preview_pair((a, b), triangulator, preview_maps)
+            except (ValueError, cv2.error) as preview_error:
+                error = f'Rectified preview unavailable: {preview_error}'
+                rectified_preview = False
+        if dialog is not None and hasattr(dialog, 'preview_button'):
+            dialog.preview_button.configure(text='切回原始完整画面  H' if rectified_preview else '看矫正预览  H')
         images=[cv2.resize(x,(int(x.shape[1]*300/x.shape[0]),300)) for x in (a,b)]
         canvas=cv2.hconcat(images);panel=np.zeros((180,canvas.shape[1],3),np.uint8)
         lines=[f'FROZEN PAIR | {dictionary} | mode={"ZERO (axes unchanged)" if zero else "WORLD"} | name={name}',
-               f'CSV: {reference}', 'R=reload/fit  Z=toggle zero  U=physical +Z up  N=edit frame name  ENTER=save  ESC=cancel',
+               f'{"RECTIFIED PREVIEW" if rectified_preview else "RAW FULL PREVIEW"} | CSV: {reference}', 'H=preview  R=reload/fit  Z=toggle zero  U=physical +Z up  N=edit frame name  ENTER=save  ESC=cancel',
                f'Up confirmed={up} | registration RMS={report.get("rms_mm","---")} max={report.get("max_mm","---")} mm',
                error, report.get('warning',''), 'Residual is registration consistency, not absolute eye accuracy.']
         for i,line in enumerate(lines): cv2.putText(panel,str(line),(12,23+i*22),cv2.FONT_HERSHEY_SIMPLEX,.44,(255,255,255),1,cv2.LINE_AA)
@@ -150,6 +158,9 @@ def _setup_loop(frames,left,right,reference,triangulator,calib_path,config_path,
             if key==13: naming=False
             elif key in (8,127):name=name[:-1]
             elif 32 <= key <= 126:name+=chr(key)
+            continue
+        if key in (ord('h'), ord('H')) and getattr(triangulator, 'image_size', None) is not None:
+            rectified_preview = not rectified_preview
             continue
         if key in (ord('n'),ord('N')): naming=True;name='';error='Type ASCII frame name; ENTER finishes name';continue
         if key in (ord('u'),ord('U')): up=not up

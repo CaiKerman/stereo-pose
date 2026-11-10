@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from stereo_pose.coordinates.rigid import RigidTransform
+from stereo_pose.geometry.projection import camera_model, validate_distortion
 from stereo_pose.persistence import ensure_managed_location
 
 GEOMETRY_KEYS = ('K1','D1','K2','D2','R','T','E','F','R1','R2','P1','P2','Q','image_size','square_mm')
@@ -53,14 +54,14 @@ def export_calibration_npz(source, destination, *, expected_sha256=None, overwri
         raise ValueError('不能覆盖当前正在使用的 NPZ；请另选文件名')
     if target.is_symlink():
         raise ValueError('不允许覆盖符号链接形式的 NPZ 文件')
-    if target.exists() and not overwrite:
-        raise FileExistsError(f'目标 NPZ 已存在，必须明确确认覆盖：{target}')
     if not target.parent.is_dir():
         raise FileNotFoundError(f'目标文件夹不存在：{target.parent}')
     validate_stereo_bundle(read_bundle(src))
     source_sha=file_sha256(src)
     if expected_sha256 and source_sha != expected_sha256:
         raise ValueError('当前 NPZ 在运行过程中被修改；拒绝另存不一致的标定')
+    if target.exists() and not overwrite:
+        raise FileExistsError(f'目标 NPZ 已存在，必须明确确认覆盖：{target}')
     temporary=None
     try:
         with tempfile.NamedTemporaryFile(
@@ -83,7 +84,7 @@ def export_calibration_npz(source, destination, *, expected_sha256=None, overwri
 
 def stereo_fingerprint(bundle):
     h = hashlib.sha256()
-    for k in GEOMETRY_KEYS:
+    for k in (*GEOMETRY_KEYS, 'camera_model'):
         if k in bundle:
             a = np.asarray(bundle[k])
             h.update(json.dumps([k,a.dtype.str,list(a.shape)],separators=(',',':')).encode())
@@ -95,10 +96,20 @@ def validate_stereo_bundle(bundle):
     for key, shape in [('K1',(3,3)),('K2',(3,3)),('R1',(3,3)),('R2',(3,3)),('P1',(3,4)),('P2',(3,4))]:
         a=np.asarray(bundle.get(key),dtype=float)
         if a.shape != shape or not np.all(np.isfinite(a)):raise ValueError(f'invalid {key} shape/finite calibration values')
-    for key in ('D1','D2'):
-        a=np.asarray(bundle.get(key),dtype=float)
-        if a.size not in (4,5,8,12,14) or a.ndim not in (1,2) or (a.ndim==2 and 1 not in a.shape) or not np.all(np.isfinite(a)):
-            raise ValueError(f'invalid {key} distortion vector')
+    model = camera_model(bundle)
+    for key in ('D1', 'D2'):
+        try:
+            validate_distortion(model, bundle.get(key))
+        except ValueError as error:
+            raise ValueError(f'invalid {key}: {error}') from error
+    for key in ('K1', 'K2', 'P1', 'P2'):
+        a = np.asarray(bundle[key])
+        if a[0, 0] <= 0 or a[1, 1] <= 0 or abs(np.linalg.det(a[:, :3])) < 1e-12:
+            raise ValueError(f'invalid {key} focal length or singular projection')
+    if 'image_size' in bundle:
+        size = np.asarray(bundle['image_size'], dtype=float)
+        if size.shape != (2,) or not np.isfinite(size).all() or np.any(size < 2) or np.any(size % 1):
+            raise ValueError('invalid image_size')
 
 
 def load_registration(path, actual_size=None):

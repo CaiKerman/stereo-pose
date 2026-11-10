@@ -107,7 +107,7 @@ def cleanup_project(
     cutoff = datetime.now() - timedelta(days=float(failed_days))
     sess_candidates = []
     for p in sess_dir.glob("session_*"):
-        if not p.is_dir():
+        if not p.is_dir() or (p / "observations.npz").is_file():
             continue
         if not _is_within(_resolved(p), sess_root):
             raise CleanupSafetyError(f"refusing to delete {p}: escapes managed session root {sess_root}")

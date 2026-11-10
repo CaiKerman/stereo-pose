@@ -8,10 +8,12 @@ the rectified-left-camera frame.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Mapping
 
 import cv2
 import numpy as np
+
+from stereo_pose.geometry.projection import RawCamera, camera_model, epipolar_axis
 
 _REQUIRED_KEYS = ["K1", "D1", "K2", "D2", "R1", "R2", "P1", "P2"]
 
@@ -28,19 +30,27 @@ class StereoTriangulator:
 
     def load(self, calibration):
         """Load calibration from an NPZ path or a mapping of matrices/metadata."""
-        if isinstance(calibration, Mapping):
+        self.path = None if isinstance(calibration, Mapping) else Path(calibration)
+        if self.path is None:
             c = calibration
-            self.path = None
         else:
-            self.path = Path(calibration)
-            c = np.load(self.path, allow_pickle=False)
-
+            with np.load(self.path, allow_pickle=False) as archive:
+                c = {key: archive[key] for key in (*_REQUIRED_KEYS, 'camera_model',
+                     'image_size', 'stereo_rms', 'sample_epipolar_mean_px',
+                     'sample_epipolar_max_px') if key in archive}
         missing = [k for k in _REQUIRED_KEYS if k not in c]
         if missing:
             raise ValueError(f"Calibration missing keys: {missing}")
         for k in _REQUIRED_KEYS:
-            setattr(self, k, c[k])
-
+            setattr(self, k, np.asarray(c[k], dtype=float))
+        self.camera_model = camera_model(c)
+        self.legacy_projection = 'camera_model' not in c
+        self.image_size = tuple(map(int, c['image_size'])) if 'image_size' in c else None
+        self.raw_left = RawCamera(self.camera_model, self.K1, self.D1, self.image_size,
+                                  legacy=self.legacy_projection)
+        self.raw_right = RawCamera(self.camera_model, self.K2, self.D2, self.image_size,
+                                   legacy=self.legacy_projection)
+        self.epipolar_axis = epipolar_axis(self.P1, self.P2)
         self.stereo_rms = float(c["stereo_rms"]) if "stereo_rms" in c else None
         self.sample_epipolar_mean_px = (
             float(c["sample_epipolar_mean_px"]) if "sample_epipolar_mean_px" in c else None
@@ -57,14 +67,17 @@ class StereoTriangulator:
             return None
         return np.array([float(p[0] / p[2]), float(p[1] / p[2])], dtype=float)
 
+    def rectify_pair(self, left, right):
+        return (self.raw_left.rectify(left, self.R1, self.P1),
+                self.raw_right.rectify(right, self.R2, self.P2))
+
     def triangulate_with_quality(self, pt_l, pt_r):
-        pl = np.asarray(pt_l, np.float64).reshape(1, 1, 2)
-        pr = np.asarray(pt_r, np.float64).reshape(1, 1, 2)
-
-        ul = cv2.undistortPoints(pl, self.K1, self.D1, R=self.R1, P=self.P1).reshape(2)
-        ur = cv2.undistortPoints(pr, self.K2, self.D2, R=self.R2, P=self.P2).reshape(2)
-
-        epipolar_error = abs(float(ul[1] - ur[1]))
+        left, right = self.rectify_pair(pt_l, pt_r)
+        ul, ur = left[0], right[0]
+        if not (np.isfinite(ul).all() and np.isfinite(ur).all()):
+            return None
+        axis = self.epipolar_axis
+        epipolar_error = abs(float(ul[axis] - ur[axis]))
 
         Xh = cv2.triangulatePoints(
             self.P1, self.P2,

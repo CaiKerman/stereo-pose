@@ -8,6 +8,7 @@ modules together while preserving the v1.2 runtime behavior and the
 from __future__ import annotations
 
 import argparse
+import json
 from contextlib import ExitStack
 import time
 from pathlib import Path
@@ -21,6 +22,10 @@ from stereo_pose.calibration import (
     newest_calibration,
     validate_calibration_compatibility,
 )
+from stereo_pose.calibration.camera_settings import (camera_modes, compare_camera_modes,
+                                                     load_camera_notes, save_camera_notes)
+from stereo_pose.calibration.experiment import preview_pair
+from stereo_pose.geometry.projection import rectify_stereo
 from stereo_pose.capture.camera import open_camera, read_stereo_pair
 from stereo_pose.config import load_config
 from stereo_pose.app.measurements import measure_frame, make_readout, append_readout
@@ -158,6 +163,25 @@ def inspect_npz_for_live_load(path, active_size, *, board, fps, camera_indexes):
     warnings.extend(camera_identity_warnings(candidate, camera_indexes[0], camera_indexes[1]))
     warnings.extend(world_warnings)
     return candidate, tri, registration, warnings, file_sha256(candidate)
+
+
+def _camera_mode_issues(path, modes):
+    if path is None:
+        return [], []
+    try:
+        with np.load(path, allow_pickle=False) as archive:
+            if 'capture_context_json' not in archive:
+                return [], []
+            return compare_camera_modes(json.loads(str(archive['capture_context_json'].item())), modes)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        return [], [f'无法核对 NPZ 相机设置：{error}']
+
+
+def _dataset_dialog(display, calibrator):
+    chosen = display.choose_observation_file(calibrator.session_root)
+    if chosen:
+        calibrator.open_dataset(chosen)
+        display.notify(f'已加载棋盘观测：{calibrator.dataset.path}')
 
 
 def _actual_fps(cap):
@@ -330,14 +354,23 @@ def _run(args, cfg, resources):
     calibrator = RuntimeCalibration(s, cr)
 
     active_size = _capture_image_size(left, right, (c["width"], c["height"]))
-    calibrator.set_camera_context(
-        left_index=c["left"],
-        right_index=c["right"],
-        backend=c["backend"],
-        requested_size=(int(c["width"]), int(c["height"])),
-        requested_fps=float(c["fps"]),
-        actual_fps=_actual_fps(left),
-    )
+    camera_indexes = (c['left'], c['right'])
+    try:
+        camera_notes = load_camera_notes(runtime_root)
+    except (OSError, ValueError) as error:
+        print(f'[calibration] cannot read webcam settings: {error}')
+        camera_notes = {}
+
+    def update_camera_context():
+        modes = camera_modes(left, right, camera_indexes, camera_notes)
+        calibrator.set_camera_context(
+            left_index=c["left"], right_index=c["right"], backend=c["backend"],
+            requested_size=(int(c["width"]), int(c["height"])), requested_fps=float(c["fps"]),
+            actual_fps=_actual_fps(left), modes=modes)
+        return modes
+
+    current_modes = update_camera_context()
+    settings_warnings, settings_mismatch = _camera_mode_issues(calib_path, current_modes)
     if calib_path is not None:
         _report_calibration_compatibility(
             calib_path, active_size, (s["board_cols"], s["board_rows"]),
@@ -397,6 +430,27 @@ def _run(args, cfg, resources):
     # rendering and the waitKey delay. We measure the whole loop iteration
     # instead (capture -> inference -> publish -> render -> waitKey) and show
     # a small EMA so the overlay does not flicker frame to frame.
+    use_projection_controls = getattr(display, 'calibration_controls', False) is True
+    preview_rectified = False
+    calibration_preview_rectified = False
+    preview_cache = {}
+    candidate_preview_cache = {}
+    previous_incompatible = False
+
+    def show_rectified(frames, tri, key):
+        if tri is None or tri.image_size is None or any(
+                (frame.shape[1], frame.shape[0]) != tri.image_size for frame in frames):
+            return frames
+        try:
+            images, maps = preview_pair(frames, tri, preview_cache.get(key))
+            if key not in preview_cache:
+                preview_cache.clear()
+                preview_cache[key] = maps
+            return images
+        except (cv2.error, ValueError) as error:
+            display.notify(f'矫正预览不可用，显示原始画面：{error}')
+            return frames
+
     prev_loop_ns = None
     loop_ema_ms = None
 
@@ -418,80 +472,134 @@ def _run(args, cfg, resources):
             if not ok:
                 raise RuntimeError("Camera pair read failed")
 
-            if registration is not None and ((fl.shape[1], fl.shape[0]) != tuple(active_size) or
-                                              (fr.shape[1], fr.shape[0]) != tuple(active_size)):
-                recorder.stop("capture_resolution_changed")
-                registration = None
-                world_warnings = ["WORLD INVALID: capture resolution changed; recalibrate C -> R, then W"]
+            active_size = (fl.shape[1], fl.shape[0])
+            sizes = (active_size, (fr.shape[1], fr.shape[0]))
+            mismatch = list(settings_mismatch)
+            if sizes[0] != sizes[1] or (triangulator is not None and triangulator.image_size is not None
+                    and any(size != triangulator.image_size for size in sizes)):
+                mismatch.append(f'当前左右画面 {sizes} 与双目标定分辨率不符')
+            incompatible = bool(mismatch)
+            if incompatible and not previous_incompatible:
+                recorder.stop("capture_settings_changed")
+                print("[calibration] metric output disabled:", "; ".join(mismatch))
+                smoother.reset()
+                speed_gate.reset()
+            previous_incompatible = incompatible
+            measurement_tri = None if incompatible else triangulator
+            measurement_registration = None if incompatible else registration
 
             t_filter_s = pair_timing.get("host_midpoint_perf_ns", time.perf_counter_ns()) / 1e9
             wall_timestamp_ns = pair_timing.get("wall_timestamp_ns", time.time_ns())
 
             if calibrator.active:
                 calibrator.process(fl, fr, force_capture=False)
+                options = display.projection_options() if use_projection_controls else None
+                frames = (fl, fr)
+                if options is not None and options[2]:
+                    model, framing, _ = options
+                    candidate = calibrator.results.get((model, 0))
+                    if candidate is not None:
+                        try:
+                            preview_key = (candidate['path'], framing)
+                            if preview_key not in candidate_preview_cache:
+                                bundle = read_bundle(candidate['path'])
+                                matrices, _ = rectify_stereo(bundle, tuple(bundle['image_size']), framing)
+                                bundle.update(matrices)
+                                candidate_preview_cache.clear()
+                                candidate_preview_cache[preview_key] = StereoTriangulator(bundle)
+                            frames = show_rectified(frames, candidate_preview_cache[preview_key], preview_key)
+                        except (OSError, ValueError, cv2.error, np.linalg.LinAlgError) as error:
+                            display.notify(f'矫正预览不可用，显示原始画面：{error}')
                 if display.native:
-                    key = display.show(pair=(fl,fr), view=calibration_view(calibrator))
+                    key = display.show(pair=frames, view=calibration_view(
+                        calibrator, options=options, active_file=calib_path,
+                        active_model=getattr(triangulator, 'camera_model', None)))
                 else:
-                    pl, pr = resize_pair(fl, fr)
+                    if calibration_preview_rectified:
+                        frames = show_rectified(frames, measurement_tri, (calib_path, 'live'))
+                    pl, pr = resize_pair(*frames)
                     canvas = calibrator.draw_overlay(cv2.hconcat([pl, pr]), pair_timing)
+                    overlay_status(canvas, [('RECTIFIED PREVIEW' if frames[0] is not fl else 'RAW FULL PREVIEW') + ' | H=toggle'])
                     key = display.show(canvas)
 
                 if key == ord(" "):
                     calibrator.capture_current()
-                elif key in (ord("r"), ord("R")):
-                    if not calibrator.can_solve():
-                        print(
-                            f"[calibration] not enough samples: "
-                            f"{len(calibrator.samples)}/{calibrator.min_pairs}"
-                        )
-                    else:
-                        if calibrator.readiness() < calibrator.recommended_readiness:
-                            print(
-                                f"[calibration] warning: readiness={calibrator.readiness():.0f}/100 "
-                                f"(< recommended {calibrator.recommended_readiness:.0f}); solving anyway"
-                            )
-                        try:
-                            result = calibrator.solve()
-                            triangulator = StereoTriangulator(result["path"])
-                            calib_path = result["path"]
-                            registration, world_warnings = load_readout_registration(calib_path, active_size)
-                            active_artifact_sha = file_sha256(calib_path)
-                            print("[coordinates] prior world cleared after stereo solve; default camera midpoint active when available; W=re-register world")
-                            try:
-                                s.update(activate_calibration(args.config, calib_path))
-                            except Exception as selection_error:
-                                print("[calibration] active for this run only; preference save failed:", selection_error)
+                elif key in (ord("r"), ord("R"), ord("a"), ord("A")):
+                    try:
+                        solving = key in (ord('r'), ord('R'))
+                        if solving and not calibrator.can_solve():
+                            raise ValueError(f'至少需要 {calibrator.min_pairs} 对可信棋盘观测')
+                        if options is not None and solving:
+                            result = calibrator.solve(options[0], stage=True, quality=qcfg)
+                            display.notify(f'已计算 {result["camera_model"]}。可继续比较，或点击「启用所选标定」。')
+                            frame_index += 1
+                            continue
+                        if options is None:
+                            if not solving:
+                                frame_index += 1
+                                continue
+                            result = calibrator.solve(stage=True, quality=qcfg)
+                        else:
+                            result = calibrator.results.get((options[0], 0))
+                            if result is None:
+                                raise ValueError('请先成功计算所选投影模型。')
+                        candidate_path, candidate_tri, candidate_reg, warnings, candidate_sha = (
+                            inspect_npz_for_live_load(result['path'], active_size,
+                                board=(s['board_cols'], s['board_rows']), fps=float(c['fps']),
+                                camera_indexes=camera_indexes))
+                        if candidate_tri.image_size != sizes[1]:
+                            raise ValueError('右相机当前分辨率与候选 NPZ 不符')
+                        if 'npz_sha256' in result and candidate_sha != result['npz_sha256']:
+                            raise ValueError('候选 NPZ 已改变，请重新求解')
+                        device_warnings, device_mismatches = _camera_mode_issues(candidate_path, current_modes)
+                        if device_mismatches:
+                            raise ValueError('；'.join(device_mismatches))
+                        warnings = [*warnings, *device_warnings, '启用此标定会清除旧 W 对齐，需要重新设置 W。']
+                        if 'mapping' in result:
+                            for side in ('left', 'right'):
+                                invalid = result['mapping'][side]['invalid_grid_count']
+                                if invalid:
+                                    warnings.append(f'{side}: {invalid} 个抽样像素逆畸变失效，异常点将被拒绝。')
+                        if options is None or display.confirm_calibration_file(candidate_path, warnings):
+                            s.update(activate_calibration(args.config, candidate_path))
+                            triangulator, calib_path = candidate_tri, candidate_path
+                            registration, active_artifact_sha = candidate_reg, candidate_sha
+                            world_warnings = warnings
+                            settings_warnings, settings_mismatch = device_warnings, device_mismatches
                             smoother.reset()
                             speed_gate.reset()
-                            print(f"[calibration] ACTIVE switched to {calib_path}")
-                            print(f"[calibration] T(mm)={result['T']}")
-                            print(
-                                f"[calibration] Stereo RMS={result['stereo_rms']:.4f}; "
-                                f"sample epipolar mean/max={result['sample_epipolar_mean_px']:.3f}/"
-                                f"{result['sample_epipolar_max_px']:.3f}px"
-                            )
-                            _report_calibration_compatibility(
-                                calib_path, active_size, (s["board_cols"], s["board_rows"]),
-                                fps=float(c.get("fps")) if c.get("fps") else None,
-                                camera_indexes=(c["left"], c["right"]),
-                            )
-                            if cl.get("enabled", True):
-                                cleanup_project(
-                                    s["calibration_dir"], cr["session_dir"],
-                                    runtime_root=runtime_root,
-                                    keep_latest=cl.get("keep_latest_calibrations", 10),
-                                    failed_days=cl.get("delete_failed_sessions_older_days", 7),
-                                    verbose=True,
-                                    protected_files=[calib_path],
-                                )
-                        except Exception as e:
-                            display.notify(f'标定计算失败：{e}')
-                            print(f"[calibration] solve failed: {e}")
+                            calibrator.stop_without_delete()
+                            display.notify(f'已启用 {candidate_tri.camera_model}｜{candidate_path.name}')
+                            print(f'[calibration] ACTIVE {candidate_path} T(mm)={result["T"]}')
+                    except Exception as error:
+                        display.notify(f'标定操作失败：{error}')
+                        print(f'[calibration] failed: {error}')
+                elif options is None and key in (ord('h'), ord('H')):
+                    calibration_preview_rectified = not calibration_preview_rectified
+                elif options is not None and key in (ord('j'), ord('J'), ord('o'), ord('O')):
+                    try:
+                        if key in (ord('j'), ord('J')):
+                            display.notify(calibrator.check_fixed_target())
+                        else:
+                            _dataset_dialog(display, calibrator)
+                    except Exception as error:
+                        display.notify(str(error))
                 elif key in (ord("x"), ord("X")):
                     calibrator.discard()
                 elif key in (ord("c"), ord("C")):
+                    if options is not None and calibrator.dataset is None and calibrator.can_solve():
+                        try:
+                            dataset = calibrator.freeze_observations()
+                            display.notify(f'已封存棋盘观测：{dataset.path}')
+                        except Exception as error:
+                            display.notify(f'无法封存棋盘观测：{error}')
                     calibrator.stop_without_delete()
                 elif key in (ord("q"), 27):
+                    if options is not None and calibrator.dataset is None and calibrator.can_solve():
+                        try:
+                            calibrator.freeze_observations()
+                        except Exception as error:
+                            print(f'[calibration] could not freeze observations before exit: {error}')
                     break
 
                 frame_index += 1
@@ -503,7 +611,7 @@ def _run(args, cfg, resources):
 
             frame, all_accepted, all_verdicts, geometries = measure_frame(
                 selected_joints=selected_joints, readout_joints=readout_joints,
-                triangulator=triangulator, points_left=pts_l, points_right=pts_r,
+                triangulator=measurement_tri, points_left=pts_l, points_right=pts_r,
                 conf_left=cf_l, conf_right=cf_r, kp_conf=kp_conf, qcfg=qcfg,
                 speed_gate=speed_gate, smoother=smoother, t_s=t_filter_s,
                 frame_index=frame_index, wall_timestamp_ns=wall_timestamp_ns,
@@ -514,7 +622,7 @@ def _run(args, cfg, resources):
             rejected = frame.frame_quality["rejected"]
             mean_epi = frame.frame_quality["mean_epipolar_error_px"]
             mean_reproj = frame.frame_quality["mean_reprojection_error_px"]
-            readout_rows = make_readout(readout_joints, all_accepted, all_verdicts, geometries, registration)
+            readout_rows = make_readout(readout_joints, all_accepted, all_verdicts, geometries, measurement_registration)
             publisher.publish(to_v1_message(frame))
             recorder.sample(frame, readout_rows)
 
@@ -522,6 +630,8 @@ def _run(args, cfg, resources):
                 print(format_diagnostic_summary(frame_index, diagnostics))
 
             display_images = (res_l.plot(), res_r.plot())
+            if preview_rectified:
+                display_images = show_rectified(display_images, measurement_tri, (calib_path, 'live'))
             if not display.native:
                 vl, vr = resize_pair(*display_images, target_h=360)
                 canvas = cv2.hconcat([vl, vr])
@@ -536,7 +646,9 @@ def _run(args, cfg, resources):
             skew_txt = "n/a" if skew is None else f"{skew:.2f}ms"
             rej_total = sum(rejected.values())
 
-            cal_state = "calib=OK" if triangulator is not None else "calib=NONE"
+            cal_state = "calib=OK" if measurement_tri is not None else "calib=NONE"
+            if preview_rectified and measurement_tri is not None and measurement_tri.image_size is not None:
+                cal_state += " | RECTIFIED PREVIEW"
             cycle = pair_timing.get("pair_cycle_ms")
             # Review B4: fps shows the measured FULL processing-loop rate;
             # the camera grab pair period is reported separately below.
@@ -544,7 +656,9 @@ def _run(args, cfg, resources):
             grab_txt = "grab n/a" if not cycle else f"grab={float(cycle):.0f}ms"
             smooth_txt = "F:smoothing ON" if smoother.enabled else "F:smoothing OFF"
 
-            alarms = []
+            alarms = [*settings_warnings, *[f'标定失配，暂停可信 XYZ：{reason}' for reason in mismatch]]
+            if incompatible and not display.native:
+                alarms = ['! CALIBRATION MISMATCH: metric output disabled (see console)']
             if triangulator is None:
                 alarms.append("! no stereo calibration loaded (C -> R)")
             if mean_epi is not None and mean_epi > 3.0:
@@ -573,18 +687,42 @@ def _run(args, cfg, resources):
             )
             if display.native:
                 key = display.show(pair=display_images, view=tracking_view(
-                    readout_rows, registration, calibrated=triangulator is not None,
+                    readout_rows, measurement_registration, calibrated=measurement_tri is not None,
                     recording=recorder.active, record_status=recorder.status(), smoothing=smoother.enabled,
                     cameras=(c['left'],c['right']), fps=fps_txt, details=menu_lines,
-                    warnings=alarms+world_warnings, calibration_file=calib_path))
+                    warnings=alarms+world_warnings, calibration_file=calib_path,
+                    model=getattr(triangulator, 'camera_model', None)))
             else:
                 overlay_status(canvas, menu_lines)
-                canvas = append_readout(canvas, readout_rows, registration, recorder.status(), world_warnings=world_warnings)
+                canvas = append_readout(canvas, readout_rows, measurement_registration, recorder.status(), world_warnings=world_warnings)
                 key = display.show(canvas)
 
             if key in (ord("c"), ord("C")):
                 recorder.stop("enter_calibration")
+                current_modes = update_camera_context()
+                settings_warnings, settings_mismatch = _camera_mode_issues(calib_path, current_modes)
+                calibration_preview_rectified = False
                 calibrator.start()
+            elif use_projection_controls and key in (ord('o'), ord('O'), ord('b'), ord('B')):
+                try:
+                    if key in (ord('o'), ord('O')):
+                        _dataset_dialog(display, calibrator)
+                        if calibrator.active:
+                            recorder.stop('open_calibration_dataset')
+                    else:
+                        notes = display.edit_camera_settings(current_modes)
+                        if notes is not None:
+                            new_notes = {**camera_notes, **notes}
+                            save_camera_notes(runtime_root, new_notes)
+                            camera_notes = new_notes
+                            current_modes = update_camera_context()
+                            settings_warnings, settings_mismatch = _camera_mode_issues(calib_path, current_modes)
+                            display.notify('已保存相机输出设置记录。')
+                except Exception as error:
+                    display.notify(f'操作失败：{error}')
+            elif key in (ord('h'), ord('H')) and measurement_tri is not None:
+                preview_rectified = not preview_rectified
+                display.notify('矫正显示（计算仍使用原始点）' if preview_rectified else '原始完整画面')
             elif key in (ord("k"), ord("K")):
                 if calib_path is None or active_artifact_sha is None:
                     display.notify('尚未加载有效双目标定；请先加载或通过 C → R 创建 NPZ。')
@@ -623,6 +761,13 @@ def _run(args, cfg, resources):
                                     camera_indexes=(c['left'], c['right']),
                                 )
                             )
+                            if sizes[1] != candidate_tri.image_size:
+                                raise ValueError('右相机当前分辨率与候选 NPZ 不符')
+                            device_warnings, device_mismatches = _camera_mode_issues(candidate_path, current_modes)
+                            warnings = [*warnings, *device_warnings, *device_mismatches]
+                            if registration is not None and registration['metadata'].get('mode') != 'camera_midpoint' and (
+                                    candidate_reg is None or candidate_reg['metadata'].get('mode') == 'camera_midpoint'):
+                                warnings.append('切换后旧 W 对齐失配，需重新设置 W。')
                             if display.confirm_calibration_file(candidate_path, warnings):
                                 # Durable selection first; a validation or config write
                                 # failure leaves the running calibration untouched.
@@ -633,6 +778,7 @@ def _run(args, cfg, resources):
                                 triangulator = candidate_tri
                                 registration = candidate_reg
                                 world_warnings = list(warnings)
+                                settings_warnings, settings_mismatch = device_warnings, device_mismatches
                                 active_artifact_sha = candidate_sha
                                 smoother.reset()
                                 speed_gate.reset()
@@ -674,7 +820,7 @@ def _run(args, cfg, resources):
                     print("[calibration] no active calibration to pin")
             elif key in (ord("w"), ord("W")):
                 recorder.stop("world_setup")
-                if triangulator is None:
+                if measurement_tri is None:
                     print("[world] create/load stereo calibration first (C -> R)")
                 else:
                     try:
@@ -699,7 +845,7 @@ def _run(args, cfg, resources):
                 elif not cfg["recording"]["enabled"] or not cfg["recording"]["save_csv"]:
                     display.notify('配置已关闭 CSV 录制。')
                     print("[recording] CSV disabled by config")
-                elif calib_path is None:
+                elif measurement_tri is None:
                     print("[recording] load/create a stereo calibration first")
                 else:
                     try:
@@ -726,7 +872,7 @@ def _run(args, cfg, resources):
                 diagnostics_enabled = not diagnostics_enabled
                 print(f"[diagnostics] per-joint view {'ON' if diagnostics_enabled else 'OFF'}")
             elif key in (ord("v"), ord("V")):
-                if triangulator is None:
+                if measurement_tri is None:
                     print("[validation] no active calibration; run calibration first (C -> R)")
                 else:
                     _run_metric_validation(
@@ -765,7 +911,7 @@ def _run(args, cfg, resources):
                         pose_right=snap_right,
                         selected_joints=selected_joints,
                         verdicts=verdicts,
-                        triangulator=triangulator,
+                        triangulator=measurement_tri,
                         calib_path=calib_path,
                         confidence_threshold=kp_conf,
                     )

@@ -1,3 +1,9 @@
+# Task006 — 双目投影模型与边缘精度对照
+
+- 实施 [Issue #9](https://github.com/CaiKerman/stereo-pose/issues/9)。说明见 `docs/instructions/006_PROJECTION_MODEL_EXPERIMENT.md`。
+- 独立分支 `feat/006-stereo-projection-audit`，基于 PR #8 的 `d7bf68fcf5889bec660234abb43369701b510a30`，PR 目标为 `feat/005-responsive-desktop-ui`。
+- 软件功能和合成测试见 TEST_REPORT.md。Windows / Action 4 的实机原因与绝对毫米精度待验证。
+
 Task005 follow-up 2026-11-03: W frozen world-setup viewer zoom/crop made codes invisible although detection used raw images. Replaced the W display remap with original unrectified frozen frames, retained full FOV and raw ArUco overlays, reverse-projected the fitted axis overlay through R1/K1/D1 to raw left image. 3D math untouched, tests committed; owner hardware acceptance pending. Continue current PR #8 without merge/retarget.
 
 Correspondence fix follow-up: if at least 12 independently trusted stereo pairs remain, omit ambiguous extra captures with recorded indices and continue; otherwise fail safely. Existing min=12, target=24 (recommendation only) unchanged.

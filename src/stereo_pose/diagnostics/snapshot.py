@@ -37,6 +37,7 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 import cv2
 import numpy as np
 
+from stereo_pose.geometry.triangulation import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, JOINT_NAMES
 
 SNAPSHOT_SCHEMA = "stereo_pose_3d/snapshot/v2"
@@ -265,20 +266,24 @@ def compute_epipolar(calibration, uv_left, uv_right) -> Optional[Dict[str, Any]]
         return None
     if not (np.all(np.isfinite(pl)) and np.all(np.isfinite(pr))):
         return None
-    ul = cv2.undistortPoints(
-        pl.reshape(1, 1, 2), calibration["K1"], calibration["D1"],
-        R=calibration["R1"], P=calibration["P1"],
-    ).reshape(2)
-    ur = cv2.undistortPoints(
-        pr.reshape(1, 1, 2), calibration["K2"], calibration["D2"],
-        R=calibration["R2"], P=calibration["P2"],
-    ).reshape(2)
-    signed_dy = float(ul[1] - ur[1])
+    if 'projection_replay_version' in calibration or 'camera_model' in calibration:
+        tri = StereoTriangulator(calibration)
+        left, right = tri.rectify_pair(pl, pr)
+        ul, ur = left[0], right[0]
+        axis = tri.epipolar_axis
+    else:
+        # Preserve replay of historical snapshots with OpenCV's original
+        # inverse and horizontal epipolar convention.
+        ul, ur = (cv2.undistortPoints(uv.reshape(1, 1, 2), calibration[f"K{i}"],
+                  calibration[f"D{i}"], R=calibration[f"R{i}"], P=calibration[f"P{i}"]).reshape(2)
+                  for i, uv in enumerate((pl, pr), 1))
+        axis = 1
+    if not (np.isfinite(ul).all() and np.isfinite(ur).all()):
+        return None
     return {
-        "rectified_uv_left": [float(x) for x in ul],
-        "rectified_uv_right": [float(x) for x in ur],
-        "signed_y_delta_px": signed_dy,
-        "epipolar_error_px": abs(signed_dy),
+        "rectified_uv_left": ul.tolist(), "rectified_uv_right": ur.tolist(),
+        "signed_y_delta_px": float(ul[1] - ur[1]),
+        "epipolar_error_px": abs(float(ul[axis] - ur[axis])),
     }
 
 
@@ -296,6 +301,12 @@ def calibrate_bundle(triangulator) -> Optional[Dict[str, np.ndarray]]:
         if val is None:
             raise ValueError(f"triangulator missing {key}")
         bundle[key] = np.array(val, dtype=float, copy=True)
+    if isinstance(triangulator, StereoTriangulator):
+        bundle['projection_replay_version'] = np.array(1)
+        if not triangulator.legacy_projection:
+            bundle['camera_model'] = np.array(triangulator.camera_model)
+        if triangulator.image_size:
+            bundle['image_size'] = np.array(triangulator.image_size)
     return bundle
 
 
@@ -373,7 +384,7 @@ def _joint_entry(
                 "epipolar_error_px": epi["epipolar_error_px"],
             })
         else:
-            rectified["missing_reason"] = "non-finite keypoint"
+            rectified["missing_reason"] = "invalid keypoint or inverse projection"
     elif calibration is None:
         rectified["missing_reason"] = "no calibration loaded"
     elif left["missing"] or right["missing"]:

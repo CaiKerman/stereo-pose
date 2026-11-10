@@ -110,6 +110,22 @@ class NativeSmoke(unittest.TestCase):
             button.invoke()
             self.assertEqual(self.ui.show(pair=(self.image,self.image),view=self.view),key)
 
+    def test_projection_dropdowns_and_separate_activation_button(self):
+        cal = SimpleNamespace(current={}, samples=[], dataset=None, results={}, failures={},
+            can_solve=lambda:False, target_pairs=24, min_pairs=12, auto_capture=True,
+            diversity_threshold=.12, readiness=lambda:0)
+        self.assertEqual(self.ui.projection_options(), ('pinhole', 0, False))
+        view = calibration_view(cal, options=self.ui.projection_options())
+        self.ui.show(pair=(self.image,self.image),view=view)
+        self.assertTrue(self.ui.projection_bar.winfo_ismapped())
+        self.assertFalse(next(a for a in view['actions'] if a.key==ord('a')).enabled)
+        self.ui.model_box.current(2)
+        self.ui.framing_box.current(1)
+        self.ui.preview_box.current(1)
+        self.assertEqual(self.ui.projection_options(), ('fisheye', 1, True))
+        self.ui.show(pair=(self.image,self.image),view=self.view)
+        self.assertFalse(self.ui.projection_bar.winfo_ismapped())
+
     def test_button_and_keyboard_dispatch_once(self):
         self.ui.buttons[0].invoke()
         self.assertEqual(self.ui.show(pair=(self.image,self.image),view=self.view),ord('c'))

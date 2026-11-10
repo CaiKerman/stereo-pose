@@ -1,3 +1,32 @@
+# Task006 验证报告 · 2026-11-10
+
+基线为 PR #8 的 `d7bf68fcf5889bec660234abb43369701b510a30`，文件树校验为 `895759aad542ff8d40014dfb67924d2862451783`。Linux，Python 3.12.14，OpenCV Contrib 4.13.0，NumPy 2.3.5。所有观测为合成数据。
+
+| 命令 | 结果 |
+| --- | --- |
+| 基线 `PYTHONPATH=src python -m pytest -q` | 359 通过，1 个子测试失败，68 个子测试通过 |
+| 修改后 `PYTHONPATH=src python -m pytest -q` | 369 通过，74 个子测试通过，0 失败、跳过 |
+| `PYTHONPATH=src python -m unittest discover -s tests -q` | 369 通过，0 失败、跳过 |
+| `PYTHONPATH=src:. python tools/smoke_desktop_ui.py` | Linux 原生 Tk、Xorg dummy，16 通过，0 失败 |
+| `python tools/calibration_experiment.py --config <合成配置> fit <观测> --model all` | 同一份观测三模型均成功重算 |
+| `python tools/calibration_experiment.py --config <合成配置> audit <三个NPZ> --references <合成控制>` | 三份映射 PNG、审计 JSON 和 XYZ 对照输出成功 |
+
+基线失败为 `test_manual_export_rejects_invalid_destination_and_hash_mismatch` 中已存在目标与源哈希失配并存时抛出错误类型不符。当前先核对源哈希，测试通过。
+
+## 同一份鱼眼合成观测
+
+16 对原始棋盘姿态，13 对训练，3 对留出。左右内参不同，有夹角。每个模型另用 3 个独立已知相机坐标点检验候选 NPZ。以下结果来自无随机图像噪声的合成模型，仅校验计算链。
+
+| 模型 | 全样本双目 RMS（px） | 留出极线平面角差 P95（mrad） | 独立 XYZ 误差长度 P95（mm） | 逆投影失败网格 左 / 右 |
+| --- | ---: | ---: | ---: | ---: |
+| 普通针孔 | 0.097729 | 0.756584 | 1.040715 | 226 / 70 |
+| 扩展针孔 | 0.000345 | 0.004216 | 0.006458 | 0 / 0 |
+| 鱼眼 | 0.000021 | 0.000088 | 0.000121 | 0 / 0 |
+
+同样接受这 3 个独立点的情况下，普通针孔仍有部分画面网格无法可靠逆投影。全局 RMS 无法替代区域和映射检查。另一个超广角合成样本恢复 24 对对应（含 5 对右图 180° 逆序），边缘独立点的 XYZ 与 Q 矩阵一致。默认 OpenCV 鱼眼裁切投影约为 41 px 虚拟焦距，低于原始 352 px。正式测量使用焦距下限，保留可切换的两种预览。该算例的结果不能外推到 Action 4。
+
+Windows 原生窗口、两台 Action 4 的真实输出模式、实拍留出样本和绝对精度尚待验证。开发环境没有相机与用户原始 NPZ。完整实测步骤见 `docs/instructions/006_PROJECTION_MODEL_EXPERIMENT.md`。
+
 ## 2026-11-03 W raw frozen preview
 
 The latest owner photo showed reference markers visible in the main live camera images yet disappearing from the W modal preview, caused by `cv2.remap` rectification of the entire frozen frames with a high-zoom/cropping NPZ. The display previously drew marker outlines in rectified coordinates, meaning markers could be outside the preview. Change W only: show uncropped raw sensor images and draw markers there; continue to apply rectification only in existing per-point stereo XYZ triangulation.

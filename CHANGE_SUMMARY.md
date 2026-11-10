@@ -1,3 +1,12 @@
+# Task006 — 投影模型对照与边缘误差诊断
+
+- 新增单次棋盘数据封存、同数据集三模型求解、候选启用、历史 NPZ 审计、独立 XYZ 对照和固定棋盘漂移核查。
+- 运行时对原始点按显式模型逆投影，核对前向回投、径向中央域及局部雅可比。无模型字段的历史 NPZ 走普通针孔。旧快照继续使用原回放路径。
+- C / W / 跟踪预览可明确切换原始与矫正。角点、图码和人体测量均从原始像素进入。扩展与鱼眼的测量虚拟焦距带原始焦距下限。
+- 新增 NPZ 模型、数据集及设置元数据。v1.2 消息形状及坐标单位沿用现有协议。没有新的强制依赖。已封存样本取代求解后删除图片的旧行为。Windows / Action 4 的实机精度待验证。
+- 处理了旧基线的 NPZ 另存回归。先核对活动源文件 SHA-256，再对同名目标进行覆盖检查。
+- 操作和诊断定义见 `docs/instructions/006_PROJECTION_MODEL_EXPERIMENT.md`。本任务未删除旧文件。
+
 ## 2026-11-03 W dialog raw full-frame preview fix (owner screenshot)
 
 - Root cause in `src/stereo_pose/app/world_setup.py`: frozen W operator preview called `initUndistortRectifyMap` and `remap` with active NPZ, where rectified P1/P2 can zoom/crop almost the whole ArUco target out of the frame. This is a presentation defect separate from ArUco detection and 3D quality thresholds.

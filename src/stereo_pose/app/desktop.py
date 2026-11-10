@@ -26,7 +26,8 @@ HELP = '''日常使用
 双目标定
 完整棋盘必须同时出现在左右画面中。每换一个明显不同的姿态，保持静止，程序自动采样。
 同一姿态不重复采样。手动采样仍要求双目识别和面积合格。
-样本数够用后可计算；覆盖评分不是精度保证。返回测量不会替换已有标定。
+样本数够用后，选择投影模型并按 R 计算，按 A 启用。三个模型可反复使用同一批数据。
+覆盖评分不是精度保证。返回测量不会替换已有标定。
 
 坐标与原点
 「只改原点」使用一个图码参考点，保持现有轴向。
@@ -38,7 +39,8 @@ HELP = '''日常使用
 拖动边框或最大化；拖动画面与数据之间的分隔条调整比例。窄窗口左右画面自动上下排列。
 坐标表和诊断区都可滚动。只有「有效」坐标可当测量值；候选和缺失显示 —。
 旧快捷键全部保留：C 标定，W 坐标，T 录制，F 平滑，M 详情，S 快照，P 保留标定，
-D 终端诊断，V 棋盘检查，G 清理，Q / Esc 退出；标定内 SPACE 采样，R 求解，X 丢弃。
+D 终端诊断，V 棋盘检查，G 清理，Q / Esc 退出。
+B 记录设备设置，O 打开棋盘数据，H 切换预览。标定内 SPACE 采样，R 求解，A 启用，X 丢弃。
 双眼中点是检测眼点的中点，不是注视点；显示一位小数不等于毫米级准确度。
 '''
 
@@ -261,6 +263,23 @@ class DesktopDisplay:
         self.header.grid(row=0,column=0,sticky='ew');self.header.columnconfigure(0,weight=1)
         self.title=ttk.Label(self.header,style='Title.TLabel');self.title.grid(row=0,column=0,sticky='w')
         self.summary=ttk.Label(self.header);self.summary.grid(row=1,column=0,sticky='w',pady=(4,0))
+        self.calibration_controls = True
+        self.projection_bar = ttk.Frame(self.header)
+        self.projection_bar.grid(row=2, column=0, sticky='w', pady=(5, 0))
+        from stereo_pose.geometry.projection import MODEL_LABELS
+        self.model_options = tuple(MODEL_LABELS)
+        self.model_box = ttk.Combobox(self.projection_bar, values=tuple(MODEL_LABELS.values()),
+                                     state='readonly', width=10)
+        self.framing_box = ttk.Combobox(self.projection_bar, values=('裁切取满', '保留视野'),
+                                       state='readonly', width=10)
+        self.preview_box = ttk.Combobox(self.projection_bar, values=('原始完整画面', '矫正预览'),
+                                       state='readonly', width=13)
+        for column, (label, box) in enumerate(zip(('投影模型', '矫正取景', '预览'),
+                                                 (self.model_box, self.framing_box, self.preview_box))):
+            ttk.Label(self.projection_bar, text=label).grid(row=0, column=column * 2, padx=(0, 4))
+            box.grid(row=0, column=column * 2 + 1, padx=(0, 8))
+            box.current(0)
+        self.projection_bar.grid_remove()
         self.toolbar=ttk.Frame(self.root,padding=(12,0));self.toolbar.grid(row=1,column=0,sticky='ew')
         self.toolbar.bind('<Configure>',self._wrap_buttons)
         self.info=ttk.Label(self.root,padding=(16,8),wraplength=900,justify='left')
@@ -348,7 +367,7 @@ class DesktopDisplay:
         if event.keysym=='Escape':key=27
         elif event.char and len(event.char)==1:key=ord(event.char.lower())
         else:return
-        if key in map(ord,'clkw tfmgpdvsqrx'.replace(' ','')) or key in (27,ord(' ')):
+        if key in map(ord,'clkwtfmgpdvsqrxabjoh') or key in (27,ord(' ')):
             self.pending.offer(key,keyboard=True)
             return 'break'
 
@@ -392,6 +411,10 @@ class DesktopDisplay:
             else:
                 self.calibration_help.grid_remove();self.tree.grid()
                 for bar in self.table_scrollbars:bar.grid()
+        if view.get('projection_options') is None:
+            self.projection_bar.grid_remove()
+        else:
+            self.projection_bar.grid()
         self.title.configure(text=view['title']);self.summary.configure(text=view['summary'])
         self.info.configure(text=view['hint']);self.frame_label.configure(text=view['frame'])
         self.status.configure(text='\n'.join(x for x in [view['record_status'],self.notice,view.get('notice',''),view['warnings']] if x))
@@ -410,6 +433,47 @@ class DesktopDisplay:
             self._initialize_preview_split()
         except self.tk.TclError:self.closed=True
         return ord('q') if self.closed else self.pending.take()
+
+    def projection_options(self):
+        return (self.model_options[self.model_box.current()], self.framing_box.current(),
+                bool(self.preview_box.current()))
+
+    def choose_observation_file(self, initialdir):
+        from tkinter import filedialog
+        return filedialog.askopenfilename(parent=self.root, initialdir=str(initialdir),
+            title='选择已采集的 observations.npz', filetypes=[('棋盘观测数据', 'observations.npz')])
+
+    def edit_camera_settings(self, modes):
+        from stereo_pose.calibration.camera_settings import MANUAL_FIELDS
+        modal = self.tk.Toplevel(self.root)
+        modal.title('相机输出设置')
+        modal.transient(self.root)
+        frame = self.ttk.Frame(modal, padding=14)
+        frame.grid(sticky='nsew')
+        self.ttk.Label(frame, text='请在相机本机核对。无法确认的字段留空。').grid(
+            row=0, column=0, columnspan=3, sticky='w')
+        fields = {}
+        for col, (side, label) in enumerate((('left', '左'), ('right', '右')), 1):
+            mode = modes[side]
+            self.ttk.Label(frame, text=f'{label}相机 #{mode["index"]}｜{mode["reported_size"]}').grid(row=1, column=col)
+            fields[str(mode['index'])] = entries = {}
+            for row, key in enumerate(MANUAL_FIELDS, 2):
+                variable = self.tk.StringVar(value=mode['operator_confirmed'][key] or '')
+                self.ttk.Entry(frame, textvariable=variable, width=22).grid(row=row, column=col, pady=2)
+                entries[key] = variable
+        for row, label in enumerate(('设备标识', 'Webcam FOV 档', 'EIS 状态', '固件版本', '成像模式'), 2):
+            self.ttk.Label(frame, text=label).grid(row=row, column=0, sticky='w', padx=(0, 8))
+        result = {}
+        def save():
+            result.update({i: {k: v.get().strip() for k, v in entries.items()}
+                           for i, entries in fields.items()})
+            modal.destroy()
+        self.ttk.Button(frame, text='保存记录', command=save).grid(row=7, column=1, pady=(8, 0))
+        self.ttk.Button(frame, text='取消', command=modal.destroy).grid(row=7, column=2, pady=(8, 0))
+        modal.wait_visibility()
+        modal.grab_set()
+        self.root.wait_window(modal)
+        return result or None
 
     def save_calibration_file(self, current):
         """Choose a location for a byte-identical backup of the active NPZ."""
