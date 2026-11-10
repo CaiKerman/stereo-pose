@@ -1,12 +1,13 @@
 """Runtime stereo calibration collection and solver.
 
-Solver math and archive format preserve the v1.2 reference. Task004 capture
-evidence adapts to detector cadence. ``readiness`` is a heuristic sample-
+Capture evidence adapts to detector cadence. Frozen observations can be
+reused to compare projection models without capturing new frames. ``readiness`` is a heuristic sample-
 preparation score, not a statistical confidence.
 """
 
 from __future__ import annotations
 
+import json
 import math
 import shutil
 import time
@@ -18,10 +19,16 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from stereo_pose.persistence.paths import auto_dir
-from stereo_pose.calibration.package import atomic_npz
+from stereo_pose.persistence.paths import auto_dir, saved_dir
+from stereo_pose.calibration.package import (atomic_json, atomic_npz, file_sha256,
+                                              stereo_fingerprint, utc_now, validate_stereo_bundle)
+from stereo_pose.calibration.dataset import DATASET_FILENAME, load_observations, save_observations
+from stereo_pose.calibration.experiment import framing_errors, mapping_report, regional_errors, write_mapping_plot
+from stereo_pose.calibration.model_fit import fit_model
+from stereo_pose.geometry.projection import CAMERA_MODELS
+from stereo_pose.geometry.triangulation import StereoTriangulator
 from stereo_pose.calibration.stability import BoardStability, align_corner_order
-from stereo_pose.calibration.correspondence import normalize_stereo_pairs
+from stereo_pose.calibration.correspondence import prepare_stereo_pairs
 
 _SCHEMA_VERSION = "1"
 
@@ -43,7 +50,6 @@ class RuntimeCalibration:
         self.target_pairs = int(runtime_cfg.get("target_pairs", 24))
         self.min_area_ratio = float(runtime_cfg.get("min_board_area_ratio", 0.012))
         self.diversity_threshold = float(runtime_cfg.get("diversity_threshold", 0.12))
-        self.keep_images = bool(runtime_cfg.get("keep_images_after_success", False))
         self.recommended_readiness = float(runtime_cfg.get("recommended_readiness", 75))
 
         self.stable_dwell_s = float(runtime_cfg.get("stable_dwell_s", 0.30))
@@ -73,8 +79,13 @@ class RuntimeCalibration:
         self.last_capture_notice = ''
         self._notice_until = 0.
         self.camera_context = None
+        self.dataset = None
+        self.results = {}
+        self.failures = {}
+        self.fixed_target = None
+        self.fixed_target_report = None
 
-    def set_camera_context(self, left_index, right_index, backend, requested_size, requested_fps, actual_fps=None):
+    def set_camera_context(self, left_index, right_index, backend, requested_size, requested_fps, actual_fps=None, modes=None):
         """Record the camera identity/config used to capture this calibration.
 
         This payload is embedded in the solved NPZ so later compatibility
@@ -87,12 +98,13 @@ class RuntimeCalibration:
             "requested_size": (int(requested_size[0]), int(requested_size[1])),
             "requested_fps": float(requested_fps),
             "actual_fps": None if actual_fps is None else float(actual_fps),
+            "modes": modes or {},
         }
 
-    def _camera_context_fields(self):
-        if not self.camera_context:
+    @staticmethod
+    def _camera_context_fields(cc):
+        if not cc:
             return {}
-        cc = self.camera_context
         fields = {
             "camera_left": np.array(cc["left_index"]),
             "camera_right": np.array(cc["right_index"]),
@@ -112,6 +124,11 @@ class RuntimeCalibration:
         self.left_dir.mkdir(parents=True, exist_ok=True)
         self.right_dir.mkdir(parents=True, exist_ok=True)
         self.samples = []
+        self.dataset = None
+        self.results = {}
+        self.failures = {}
+        self.fixed_target = None
+        self.fixed_target_report = None
         self.last_capture_t = None
         self.current = None
         self._reset_capture_evidence()
@@ -121,6 +138,9 @@ class RuntimeCalibration:
         print(f"[calibration] session started: {self.session_dir}")
 
     def discard(self):
+        if self.dataset is not None:
+            self.stop_without_delete()
+            return
         if self.session_dir and self.session_dir.exists():
             shutil.rmtree(self.session_dir, ignore_errors=True)
         self.active = False
@@ -211,6 +231,12 @@ class RuntimeCalibration:
         return False
 
     def _save(self, frame_l, frame_r, dl, dr, stability_motion_px):
+        if self.dataset is not None:
+            raise OSError('dataset already frozen; start a new capture to add samples')
+        left_size = (frame_l.shape[1], frame_l.shape[0])
+        right_size = (frame_r.shape[1], frame_r.shape[0])
+        if left_size != right_size or (self.samples and self.samples[0]['capture']['left_size'] != list(left_size)):
+            raise OSError('camera frame size changed or differs left/right; start a new capture')
         i = len(self.samples)
         lp = self.left_dir / f"{i:03d}.png"
         rp = self.right_dir / f"{i:03d}.png"
@@ -227,6 +253,8 @@ class RuntimeCalibration:
             "left_path": lp,
             "right_path": rp,
             "stability_motion_px": float(stability_motion_px or 0.0),
+            "capture": {"timestamp_utc": utc_now(), "left_size": list(left_size),
+                        "right_size": list(right_size)},
         })
         self.last_capture_t = self._current_timestamp if self._current_timestamp is not None else time.monotonic()
         self._last_capture_corners = (dl['corners'].copy(),dr['corners'].copy())
@@ -264,6 +292,7 @@ class RuntimeCalibration:
         new_pose=valid and self._new_pose(dl,dr)
         stability_reason=info['reason'] if not stable else 'stable'
         reason=('detection_failed' if not valid else 'board_too_small' if not good_area else
+                'dataset_frozen' if self.dataset is not None else
                 'auto_disabled' if not self.auto_capture else stability_reason if not stable else
                 'duplicate_pose' if not diverse or not new_pose else
                 'waiting_interval' if interval_remaining>1e-9 else 'ready')
@@ -296,7 +325,7 @@ class RuntimeCalibration:
 
     def _attempt_capture(self, manual):
         cur=self.current
-        if not cur['valid'] or not cur['good_area']:
+        if self.dataset is not None or not cur['valid'] or not cur['good_area']:
             if manual:print('[calibration] manual capture rejected: both boards must be fully visible and large enough')
             return cur
         frame_l,frame_r,dl,dr=self._current_pair
@@ -329,6 +358,37 @@ class RuntimeCalibration:
             return {'captured':False,'capture_reason':'no_current_pair'}
         return self._attempt_capture(True)
 
+    def check_fixed_target(self):
+        """Take a local before/after observation without adding a fit sample."""
+        if self._current_pair is None or not self.current or not self.current['stable']:
+            raise ValueError('请保持固定棋盘格静止，直到左右角点稳定后再记录。')
+        fl, fr, dl, dr = self._current_pair
+        current = {
+            'timestamp_utc': utc_now(), 'camera': self.camera_context or {},
+            'sizes': [[fl.shape[1], fl.shape[0]], [fr.shape[1], fr.shape[0]]],
+            'corners': [d['corners'].reshape(-1, 2).tolist() for d in (dl, dr)],
+        }
+        if self.fixed_target is None:
+            self.fixed_target = current
+            return '已记录固定棋盘基线。保持相机和棋盘不动，再次记录以比较像素映射。'
+        before = self.fixed_target
+        stats_by_side = {}
+        for i, side in enumerate(('left', 'right')):
+            ref, measured = (np.asarray(d['corners'][i]) for d in (before, current))
+            if np.linalg.norm(measured[::-1] - ref) < np.linalg.norm(measured - ref):
+                measured = measured[::-1]
+            delta = np.linalg.norm(measured - ref, axis=1)
+            stats_by_side[side] = {'p50_px': float(np.median(delta)), 'p95_px': float(np.percentile(delta, 95)),
+                                   'center_shift_uv_px': (measured.mean(0)-ref.mean(0)).tolist(),
+                                   'image_sizes_match': before['sizes'][i] == current['sizes'][i]}
+        path = self.session_dir / 'reports' / f'fixed_target_{time.time_ns()}.json'
+        atomic_json(path, {'before': before, 'after': current, 'results': stats_by_side,
+                           'dataset_id': self.session_dir.name,
+                           'interpretation': 'observed pixel drift; camera or target movement may contribute'})
+        self.fixed_target_report = str(path)
+        return (f'固定板位移 P95 左/右：{stats_by_side["left"]["p95_px"]:.2f} / '
+                f'{stats_by_side["right"]["p95_px"]:.2f} px。报告：{path}')
+
     def readiness(self):
         if not self.samples:
             return 0.0
@@ -354,115 +414,120 @@ class RuntimeCalibration:
         return float(min(100.0, count_score + coverage_score + scale_score + angle_score))
 
     def can_solve(self):
-        return len(self.samples) >= self.min_pairs
+        count = len(self.dataset.aligned_right) if self.dataset is not None else len(self.samples)
+        return count >= self.min_pairs
 
     def _load_points(self):
         objp = np.zeros((self.rows * self.cols, 3), np.float32)
         objp[:, :2] = np.mgrid[0:self.cols, 0:self.rows].T.reshape(-1, 2)
         objp *= self.square_mm
+        size = tuple(self.samples[0]['capture']['left_size'])
+        return ([objp.copy() for _ in self.samples],
+                [sample['left']['corners'].reshape(-1, 1, 2).astype(np.float32) for sample in self.samples],
+                [sample['right']['corners'].reshape(-1, 1, 2).astype(np.float32) for sample in self.samples],
+                [(sample['left_path'], sample['right_path']) for sample in self.samples], size)
 
-        objpoints, img_l, img_r, paths = [], [], [], []
-        image_size = None
+    def freeze_observations(self):
+        if self.dataset is not None:
+            return self.dataset
+        obj, left, right, paths, size = self._load_points()
+        if len(obj) < self.min_pairs:
+            raise RuntimeError(f"Only {len(obj)} saved pairs usable; need {self.min_pairs}")
+        corrected, alignment = prepare_stereo_pairs(obj, left, right, size, self.min_pairs)
+        captures = {sample['left_path'].name: sample['capture'] for sample in self.samples
+                    if 'capture' in sample}
+        self.dataset = save_observations(
+            self.session_dir, obj, left, right, corrected, alignment, size, paths,
+            self.camera_context, (self.cols, self.rows, self.square_mm), captures, self.min_pairs)
+        return self.dataset
 
-        for sample in self.samples:
-            l = cv2.imread(str(sample["left_path"]))
-            r = cv2.imread(str(sample["right_path"]))
-            if l is None or r is None:
+    def open_dataset(self, path):
+        dataset = load_observations(path)
+        if len(dataset.aligned_right) < self.min_pairs:
+            raise ValueError(f'need {self.min_pairs} valid pairs in the saved dataset')
+        results = {}
+        failures = {}
+        digest = file_sha256(dataset.path)
+        for report in sorted((dataset.path.parent / 'reports').glob('*.json')):
+            try:
+                data = json.loads(report.read_text(encoding='utf-8'))
+                if data['dataset_sha256'] != digest:
+                    continue
+                key = (data['camera_model'], data['framing'])
+                if 'error' in data:
+                    failures[key] = data['error']
+                    continue
+                candidate = Path(data['path'])
+                if candidate.is_file() and file_sha256(candidate) == data['npz_sha256']:
+                    results[key] = data
+                    failures.pop(key, None)
+            except (OSError, ValueError, KeyError, TypeError):
                 continue
-            gl = cv2.cvtColor(l, cv2.COLOR_BGR2GRAY)
-            gr = cv2.cvtColor(r, cv2.COLOR_BGR2GRAY)
-            image_size = gl.shape[::-1]
-
-            ok_l, cl = cv2.findChessboardCornersSB(gl, self.pattern, flags=cv2.CALIB_CB_NORMALIZE_IMAGE)
-            ok_r, cr = cv2.findChessboardCornersSB(gr, self.pattern, flags=cv2.CALIB_CB_NORMALIZE_IMAGE)
-            if not (ok_l and ok_r):
-                continue
-
-            objpoints.append(objp.copy())
-            img_l.append(cl.astype(np.float32))
-            img_r.append(cr.astype(np.float32))
-            paths.append((sample["left_path"], sample["right_path"]))
-
-        return objpoints, img_l, img_r, paths, image_size
-
-    @staticmethod
-    def _solve_core(objpoints, img_l, img_r, image_size):
-        criteria = (
-            cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
-            80,
-            1e-6,
-        )
-        ret_l, K1, D1, _, _ = cv2.calibrateCamera(objpoints, img_l, image_size, None, None)
-        ret_r, K2, D2, _, _ = cv2.calibrateCamera(objpoints, img_r, image_size, None, None)
-        stereo_rms, K1, D1, K2, D2, R, T, E, F = cv2.stereoCalibrate(
-            objpoints, img_l, img_r,
-            K1, D1, K2, D2,
-            image_size,
-            criteria=criteria,
-            flags=cv2.CALIB_FIX_INTRINSIC,
-        )
-        R1, R2, P1, P2, Q, _, _ = cv2.stereoRectify(
-            K1, D1, K2, D2, image_size, R, T, alpha=0
-        )
-        return {
-            "left_rms": float(ret_l),
-            "right_rms": float(ret_r),
-            "stereo_rms": float(stereo_rms),
-            "K1": K1, "D1": D1, "K2": K2, "D2": D2,
-            "R": R, "T": T, "E": E, "F": F,
-            "R1": R1, "R2": R2, "P1": P1, "P2": P2, "Q": Q,
-        }
+        self.dataset, self.results, self.failures = dataset, results, failures
+        self.session_dir = dataset.path.parent
+        self.samples = []
+        self.fixed_target = None
+        self.fixed_target_report = None
+        self.current = None
+        self.active = True
+        self._reset_capture_evidence()
 
     @staticmethod
     def _sample_epipolar_errors(solution, img_l, img_r):
+        tri = StereoTriangulator(solution)
         errors = []
         for cl, cr in zip(img_l, img_r):
-            ul = cv2.undistortPoints(
-                cl, solution["K1"], solution["D1"],
-                R=solution["R1"], P=solution["P1"]
-            ).reshape(-1, 2)
-            ur = cv2.undistortPoints(
-                cr, solution["K2"], solution["D2"],
-                R=solution["R2"], P=solution["P2"]
-            ).reshape(-1, 2)
-            errors.append(float(np.mean(np.abs(ul[:, 1] - ur[:, 1]))))
-        return np.asarray(errors, dtype=float)
+            ul, ur = tri.rectify_pair(cl, cr)
+            epi = np.abs(ul[:, tri.epipolar_axis] - ur[:, tri.epipolar_axis])
+            valid = np.isfinite(epi)
+            errors.append(float(epi[valid].mean()) if valid.mean() >= .65 else float('nan'))
+        return np.asarray(errors)
 
-    def solve(self):
+    def solve(self, model='pinhole', *, stage=False, quality=None):
+        framing = 0  # Measurement framing is independent of the preview setting.
         if not self.can_solve():
             raise RuntimeError(f"Need at least {self.min_pairs} pairs; have {len(self.samples)}")
+        if model not in CAMERA_MODELS:
+            raise ValueError('invalid projection model')
+        dataset = self.freeze_observations()
+        key = (model, framing)
+        try:
+            result = self._fit(dataset, model, framing, stage, quality)
+        except (cv2.error, ValueError, np.linalg.LinAlgError, OSError) as error:
+            detail = f'{model}：{error}'
+            self.failures[key] = detail
+            self._write_report(dataset, model, framing, {'error': detail})
+            raise ValueError(detail) from error
+        self.results[key] = result
+        self.failures.pop(key, None)
+        if not stage:
+            self.stop_without_delete()
+        return result
 
-        objpoints, img_l, img_r, paths, image_size = self._load_points()
-        if len(objpoints) < self.min_pairs:
-            raise RuntimeError(f"Only {len(objpoints)} saved pairs usable; need {self.min_pairs}")
+    def _write_report(self, dataset, model, framing, content):
+        report = dataset.path.parent / 'reports' / f'{time.time_ns()}_{model}_{framing}_{uuid.uuid4().hex}.json'
+        data = dict(content, camera_model=model, framing=framing, dataset_id=dataset.metadata['dataset_id'],
+                    dataset_sha256=file_sha256(dataset.path), created_at_utc=utc_now(),
+                    camera=dataset.metadata['camera'], image_size=list(dataset.size),
+                    report_path=str(report))
+        if 'mapping' in data:
+            plot = report.with_suffix('.png')
+            write_mapping_plot(plot, data['mapping'], dataset.size)
+            data['mapping_plot_path'] = str(plot)
+        atomic_json(report, data)
+        return data
 
-        initial_count = len(objpoints)
-        # OpenCV's independent left/right checkerboard detections can use
-        # opposite (180-degree) physical corner orders. Never send unmatched
-        # index pairs to stereoCalibrate: reconcile on raw stereo geometry first.
-        # This does not use matching intrinsics, parallel cameras, or square_mm.
-        img_r, corner_alignment = normalize_stereo_pairs(
-            img_l, img_r, min_good_pairs=self.min_pairs
-        )
-        accepted_indices = corner_alignment["accepted_indices"]
-        rejected_indices = corner_alignment["rejected_indices"]
-        if rejected_indices:
-            objpoints = [objpoints[i] for i in accepted_indices]
-            img_l = [img_l[i] for i in accepted_indices]
-            paths = [paths[i] for i in accepted_indices]
-            print(
-                f'[calibration] rejected {len(rejected_indices)} ambiguous '
-                f'correspondence pair(s), 1-based indices: '
-                f'{[i+1 for i in rejected_indices]}'
-            )
-        corner_modes = list(corner_alignment["modes"])
-        print(
-            f'[calibration] corner correspondence: '
-            f'direct={len(corner_modes)-corner_alignment["reversed_count"]}, '
-            f'reversed_180={corner_alignment["reversed_count"]}, '
-            f'median Sampson={corner_alignment["median_sampson_px"]:.3f}px'
-        )
-        solution = self._solve_core(objpoints, img_l, img_r, image_size)
+    def _fit(self, dataset, model, framing, stage, quality):
+        quality = {**{'max_epipolar_error_px': 3., 'max_reprojection_error_px': 2.5,
+                      'min_depth_mm': 250., 'max_depth_mm': 7000.}, **(quality or {})}
+        image_size = dataset.size
+        objpoints, img_l, img_r = dataset.pairs
+        all_observations = (objpoints, img_l, img_r)
+        initial_count = len(dataset.objects)
+        rejected_indices = dataset.metadata['rejected_indices']
+        corner_modes = list(dataset.metadata['modes'])
+        selected_indices = list(dataset.metadata['accepted_indices'])
+        solution = fit_model(model, objpoints, img_l, img_r, image_size, framing)
         epi = self._sample_epipolar_errors(solution, img_l, img_r)
         pruned_count = 0
 
@@ -481,14 +546,14 @@ class RuntimeCalibration:
             bad = set(bad_order[:max(0, max_prune)])
 
             if bad:
-                keep = [i for i in range(initial_count) if i not in bad]
+                keep = [i for i in range(len(epi)) if i not in bad]
                 objpoints = [objpoints[i] for i in keep]
                 img_l = [img_l[i] for i in keep]
                 img_r = [img_r[i] for i in keep]
-                paths = [paths[i] for i in keep]
+                selected_indices = [selected_indices[i] for i in keep]
                 corner_modes = [corner_modes[i] for i in keep]
                 pruned_count = len(bad)
-                solution = self._solve_core(objpoints, img_l, img_r, image_size)
+                solution = fit_model(model, objpoints, img_l, img_r, image_size, framing)
                 epi = self._sample_epipolar_errors(solution, img_l, img_r)
                 print(
                     f"[calibration] robust prune removed {pruned_count} sample(s); "
@@ -509,10 +574,13 @@ class RuntimeCalibration:
                 '本次不生成/启用 NPZ，原标定保持不变。'
             )
 
-        out_dir = auto_dir(self.calibration_dir)
+        validate_stereo_bundle(solution)
+        out_dir = (saved_dir(self.calibration_dir) / dataset.metadata['dataset_id']
+                   if stage else auto_dir(self.calibration_dir))
+        out_dir = out_dir.resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out = out_dir / f"stereo_{stamp}_{uuid.uuid4().hex}.npz"
+        out = out_dir / f"stereo_{stamp}_{model}_{framing}_{uuid.uuid4().hex}.npz"
 
         save_fields = {
             "K1": solution["K1"], "D1": solution["D1"],
@@ -521,8 +589,17 @@ class RuntimeCalibration:
             "R1": solution["R1"], "R2": solution["R2"],
             "P1": solution["P1"], "P2": solution["P2"], "Q": solution["Q"],
             "image_size": np.array(image_size),
-            "board_cols": np.array(self.cols), "board_rows": np.array(self.rows),
-            "square_mm": np.array(self.square_mm),
+            "board_cols": np.array(dataset.metadata['board'][0]),
+            "board_rows": np.array(dataset.metadata['board'][1]),
+            "square_mm": np.array(dataset.metadata['board'][2]),
+            "camera_model": np.array(model),
+            "rectification_framing": np.array(framing),
+            "dataset_id": np.array(dataset.metadata['dataset_id']),
+            "calibration_code_version": np.array("issue9-projection-v1"),
+            "calibration_opencv_version": np.array(cv2.__version__),
+            "dataset_sha256": np.array(file_sha256(dataset.path)),
+            "fitted_sample_indices": np.array(selected_indices),
+            "capture_context_json": np.array(json.dumps(dataset.metadata['camera'])),
             "left_rms": np.array(solution["left_rms"]),
             "right_rms": np.array(solution["right_rms"]),
             "stereo_rms": np.array(solution["stereo_rms"]),
@@ -534,16 +611,44 @@ class RuntimeCalibration:
             "corner_order_modes": np.asarray(corner_modes, dtype=str),
             "corner_order_rejected_indices": np.asarray(rejected_indices, dtype=np.int32),
             "corner_order_reversed_count": np.array(corner_modes.count("reversed_180")),
-            "corner_order_sampson_median_px": np.array(corner_alignment["median_sampson_px"]),
+            "corner_order_sampson_median_px": np.array(dataset.metadata["median_sampson_px"]),
+            "corner_order_coordinate_basis": np.array(dataset.metadata['coordinate_basis']),
             "readiness": np.array(self.readiness()),
             "created_at": np.array(stamp),
             "_schema_version": np.array(_SCHEMA_VERSION),
         }
-        save_fields.update(self._camera_context_fields())
+        save_fields.update(self._camera_context_fields(dataset.metadata['camera']))
+        audit = mapping_report(save_fields, image_size)
+        train, holdout = dataset.split()
+        quality_report = {'holdout_status': 'insufficient_poses' if not holdout else 'evaluated'}
+        comparison = solution
+        if holdout:
+            try:
+                if len(train) < self.min_pairs:
+                    raise ValueError(f'saved training split has fewer than {self.min_pairs} pairs')
+                comparison = fit_model(model, *([a[i] for i in train] for a in all_observations),
+                                       image_size, framing)
+                validate_stereo_bundle(comparison)
+            except (cv2.error, ValueError, np.linalg.LinAlgError) as error:
+                comparison = None
+                quality_report = {'holdout_status': 'fit_failed', 'error': str(error)}
+        if comparison is not None:
+            for group, indices in (('train', train), ('holdout', holdout)):
+                if not indices:
+                    continue
+                obj, l, r = ([a[i] for i in indices] for a in all_observations)
+                quality_report[group] = {
+                    'sample_indices': [dataset.metadata['accepted_indices'][i] for i in indices],
+                    'regional': regional_errors(comparison, obj, l, r, image_size, quality),
+                    'framing': framing_errors(comparison, l, r, image_size),
+                }
+        quality_report['quality_gates'] = {k: float(quality[k]) for k in
+            ('max_epipolar_error_px', 'max_reprojection_error_px', 'min_depth_mm', 'max_depth_mm')}
+        quality_report['quality_gates']['min_quality_score'] = float(quality.get('min_quality_score', 0.))
         atomic_npz(out, save_fields)
 
         result = {
-            "path": out,
+            "path": str(out),
             "left_rms": solution["left_rms"],
             "right_rms": solution["right_rms"],
             "stereo_rms": solution["stereo_rms"],
@@ -554,16 +659,20 @@ class RuntimeCalibration:
             "corner_order_modes": corner_modes,
             "corner_order_rejected_indices": rejected_indices,
             "corner_order_reversed_count": corner_modes.count("reversed_180"),
-            "corner_order_sampson_median_px": corner_alignment["median_sampson_px"],
+            "corner_order_sampson_median_px": dataset.metadata["median_sampson_px"],
+            "corner_order_coordinate_basis": dataset.metadata['coordinate_basis'],
             "readiness": self.readiness(),
-            "T": solution["T"].reshape(-1).astype(float),
+            "T": solution["T"].reshape(-1).astype(float).tolist(),
+            "mapping": audit, "quality": quality_report,
+            "stereo_fingerprint": stereo_fingerprint(save_fields),
+            "npz_sha256": file_sha256(out),
+            "opencv_version": cv2.__version__,
+            "calibration_code_version": "issue9-projection-v1",
+            "validation_type": "geometric_consistency_only",
+            "fixed_target_report": self.fixed_target_report,
         }
 
-        if not self.keep_images and self.session_dir and self.session_dir.exists():
-            shutil.rmtree(self.session_dir, ignore_errors=True)
-
-        self.active = False
-        self._reset_capture_evidence()
+        result = self._write_report(dataset, model, framing, result)
         print(
             f"[calibration] saved {out} | Stereo RMS={solution['stereo_rms']:.4f} | "
             f"sample epipolar mean/max={epi_mean:.3f}/{epi_max:.3f}px | "

@@ -98,22 +98,25 @@ def _load_calibration(snapshot_dir: Path):
             if 1 not in d.shape:
                 raise ReplayError(
                     f"invalid calibration geometry: {key} has shape {d.shape}, "
-                    f"expected a 4..8 coefficient distortion (row/column) vector"
+                    f"expected an OpenCV distortion (row/column) vector"
                 )
             d = d.ravel()
             bundle[key] = d
         elif d.ndim != 1:
             raise ReplayError(
                 f"invalid calibration geometry: {key} has shape {d.shape}, "
-                f"expected a 4..8 coefficient distortion vector"
+                f"expected an OpenCV distortion vector"
             )
-        if not 4 <= d.size <= 8:
+        if d.size not in (4, 5, 8, 12, 14):
             raise ReplayError(
                 f"invalid calibration geometry: {key} has shape {d.shape}, "
-                f"expected a 4..8 coefficient distortion vector"
+                f"expected an OpenCV distortion vector"
             )
     if not all(np.all(np.isfinite(bundle[k])) for k in _CAL_KEYS):
         raise ReplayError("invalid calibration geometry: non-finite matrix entries")
+    bundle.update({key: loaded[key] for key in ("camera_model", "image_size",
+                   "projection_replay_version") if key in loaded})
+    loaded.close()
     return bundle
 
 

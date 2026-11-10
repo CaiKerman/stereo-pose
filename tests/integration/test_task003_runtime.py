@@ -32,7 +32,7 @@ class TestTrackingLifecycle(unittest.TestCase):
             q=np.c_[xyz,np.ones(17)]@P.T;return q[:,:2]/q[:,2:]
         self.L=proj(self.tri.P1);self.R=proj(self.tri.P2);self.image=np.zeros((720,1280,3),np.uint8)
 
-    def execute(self, keys, calibration_solve=None, world_result=None, native=False, selected_npz=None, confirm_npz=True, saved_npz=None, confirm_save_npz=True):
+    def execute(self, keys, calibration_solve=None, world_result=None, native=False, selected_npz=None, confirm_npz=True, saved_npz=None, confirm_save_npz=True, projection_controls=False, right_width=None):
         from stereo_pose.app.measurements import append_readout
         self.readout_registrations = []
         def draw_readout(canvas, rows, registration, *args, **kwargs):
@@ -52,18 +52,34 @@ class TestTrackingLifecycle(unittest.TestCase):
         calibrator.auto_capture=True;calibrator.diversity_threshold=.12
         calibrator.readiness.return_value=50;calibrator.can_solve.return_value=False
         self.calibrator_for_test=calibrator
+        calibrator.dataset=None
+        calibrator.results={}
+        calibrator.failures={}
         if calibration_solve is not None:
             calibrator.start.side_effect=lambda:setattr(calibrator,'active',True)
             calibrator.readiness.return_value=100;calibrator.recommended_readiness=75
             calibrator.can_solve.return_value=True
-            def solve():
-                calibrator.active=False
-                return {'path':calibration_solve,'T':[-300,0,0],'stereo_rms':0.,'sample_epipolar_mean_px':0.,'sample_epipolar_max_px':0.}
+            def solve(model='pinhole', *, stage=False, quality=None):
+                if not projection_controls:
+                    calibrator.active=False
+                result = {'path':calibration_solve,'camera_model':model,'T':[-300,0,0],
+                          'stereo_rms':0., 'sample_epipolar_mean_px':0., 'sample_epipolar_max_px':0.}
+                return result
             calibrator.solve.side_effect=solve
         publisher=Mock()
         if native:
             display=Mock();display.native=True
-            display.show.side_effect=keys
+            display.calibration_controls=projection_controls
+            display.projection_options.return_value=('pinhole',0,False)
+            initial_preference=Path(self.args.config).read_bytes()
+            pending=iter(keys)
+            def show(**kwargs):
+                key=next(pending)
+                if key == ord('a') and projection_controls:
+                    self.assertEqual(Path(self.args.config).read_bytes(),initial_preference)
+                    calibrator.results['pinhole',0]={'path':calibration_solve,'T':[-300,0,0]}
+                return key
+            display.show.side_effect=show
             display.choose_calibration_file.return_value=selected_npz
             display.confirm_calibration_file.return_value=confirm_npz
             display.save_calibration_file.return_value=saved_npz
@@ -72,7 +88,8 @@ class TestTrackingLifecycle(unittest.TestCase):
         count={'i':0};clock={'t':0}
         def pair(*a,**kw):
             clock['t']+=250_000_000;count['i']+=1
-            return True,self.image.copy(),self.image.copy(),{'host_midpoint_perf_ns':clock['t'],'wall_timestamp_ns':1_700_000_000_000_000_000+clock['t']}
+            right = self.image if right_width is None else self.image[:, :right_width]
+            return True,self.image.copy(),right.copy(),{'host_midpoint_perf_ns':clock['t'],'wall_timestamp_ns':1_700_000_000_000_000_000+clock['t']}
         with ExitStack() as stack:
             if native:
                 stack.enter_context(patch('stereo_pose.app.runner.create_display',return_value=display))
@@ -94,6 +111,22 @@ class TestTrackingLifecycle(unittest.TestCase):
         self.assertEqual(read.call_count,len(keys));self.assertEqual(estimator.infer_pair.call_count,len(keys)-calibrator.process.call_count)
         self.assertEqual(camera.release.call_count,2);publisher.close.assert_called_once()
         return publisher,wizard
+
+    def test_native_candidate_waits_for_explicit_activation(self):
+        candidate=synthetic_calibration(self.root/'staged.npz')
+        self.execute([ord('c'),ord('r'),ord('a'),ord('q')],native=True,
+                     projection_controls=True,calibration_solve=candidate)
+        self.assertEqual(load_config(self.args.config)['stereo']['explicit_file'],str(candidate.resolve()))
+        self.display_for_test.confirm_calibration_file.assert_called_once()
+        self.assertTrue(any('旧 W' in line for line in self.display_for_test.confirm_calibration_file.call_args.args[1]))
+
+    def test_right_resolution_change_suppresses_xyz_and_recording(self):
+        self.execute([ord('t'),ord('q')],native=True,right_width=1000)
+        last=self.display_for_test.show.call_args.kwargs['view']
+        self.assertIn('暂停可信 XYZ', last['warnings'])
+        self.assertFalse(next(a for a in last['actions'] if a.key==ord('t')).enabled)
+        self.assertFalse(list((self.root/'recordings').glob('session_*')))
+        self.assertTrue(all(row[1:4]==('—','—','—') for row in last['rows']))
 
     def test_save_npz_button_exports_exact_archive_without_switching(self):
         destination=self.root/'exported_archive.npz'
