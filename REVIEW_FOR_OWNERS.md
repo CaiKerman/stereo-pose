@@ -1,5 +1,7 @@
 # Task006 审核项
 
+[审核 PR #10](https://github.com/CaiKerman/stereo-pose/pull/10) · 已验证的实现提交 `af70aa96d5d77052131f831748f59cbf6037ae2a`。
+
 - 独立分支 `feat/006-stereo-projection-audit` 从 PR #8 的 `d7bf68fcf5889bec660234abb43369701b510a30` 开始。审核目标为 `feat/005-responsive-desktop-ui`，依赖其中文桌面界面、NPZ 加载和 W 原始预览。
 - 用同一轮真实棋盘采集比较三种模型。测试前后用固定棋盘检查动态映射，分离投影模型、双目外参、W 配准和人体识别误差。须以独立 XYZ 对照确认实机精度。
 - 测试路径、限制和已知基线失败修复见 TEST_REPORT.md。操作见 `docs/instructions/006_PROJECTION_MODEL_EXPERIMENT.md`。
