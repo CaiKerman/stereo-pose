@@ -116,11 +116,13 @@ def load_registration(path, actual_size=None):
     except (ValueError, KeyError, TypeError, OSError) as e:
         return None, [f'WORLD INVALID: unreadable/invalid calibration package: {e}']
     if not any(k in b for k in WORLD_KEYS): return None, []
+    warnings = []
     try:
         if not all(k in b for k in WORLD_KEYS): raise ValueError('incomplete world fields')
         if str(b['world_schema_version'].item()) != '1': raise ValueError('unsupported world schema')
         m = json.loads(str(b['world_metadata_json'].item()))
-        if m['stereo_fingerprint'] != stereo_fingerprint(b): raise ValueError('stereo fingerprint mismatch')
+        if m.get('stereo_fingerprint') != stereo_fingerprint(b):
+            warnings.append('WORLD WARNING: stereo calibration content changed since W was created; using current W as requested')
         if m['source_system'] != 'rectified_left_camera' or m['unit'] != 'mm': raise ValueError('invalid source frame/units')
         if actual_size is not None:
             if 'image_size' not in b or tuple(np.asarray(b['image_size']).reshape(-1)) != tuple(actual_size):
@@ -129,9 +131,9 @@ def load_registration(path, actual_size=None):
         name = str(b['world_coordinate_name'].item())
         if not name.strip(): raise ValueError('empty frame name')
         if m.get('mode') != 'zero' and m.get('up_confirmed') is not True: raise ValueError('world-up not confirmed')
-        return {'transform':t,'name':name,'metadata':m}, []
+        return {'transform':t,'name':name,'metadata':m}, warnings
     except (ValueError, KeyError, TypeError) as e:
-        return None, [f'WORLD INVALID: {e}; re-register W']
+        return None, warnings + [f'WORLD INVALID: {e}; re-register W']
 
 
 def load_readout_registration(path, actual_size=None):
