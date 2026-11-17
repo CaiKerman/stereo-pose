@@ -12,6 +12,8 @@ if (-not (Test-Path ".\yolo11n-pose.pt")) {
 }
 
 # Obfuscate our code, not the local configuration or measurement artifacts.
+# Avoid carrying deleted modules forward from a previous build.
+if (Test-Path "build\\obfuscated") { Remove-Item "build\\obfuscated" -Recurse -Force }
 pyarmor gen -O "build\obfuscated" -r "RUN_ME.py" "src\stereo_pose"
 
 # Standalone Windows PE with bundled Python, torch, OpenCV and Ultralytics.
