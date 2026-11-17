@@ -9,8 +9,8 @@ import traceback
 from pathlib import Path
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
-SRC = ROOT / "src"
-sys.path.insert(0, str(SRC))
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, str(ROOT / "src"))
 os.chdir(ROOT)
 
 
@@ -21,8 +21,12 @@ def stop(msg: str, details: str = "") -> None:
     print(msg)
     if details:
         print("\n" + details)
-    print("\nNo pip install was performed. No project files were installed into Python.")
-    print("Please use the same Python environment that previously ran your stereo-pose PoC.")
+    if getattr(sys, "frozen", False):
+        print("\nThis is the standalone EXE. It does not require a system Python installation.")
+        print("Keep the entire StereoPose folder together, including its _internal directory.")
+    else:
+        print("\nNo pip install was performed. No project files were installed into Python.")
+        print("Please use the Python environment that ran your stereo-pose PoC.")
     print("=" * 72)
     try:
         input("\nPress Enter to close...")
@@ -38,7 +42,7 @@ def ensure_config() -> Path:
 
     default_cfg = ROOT / "configs" / "default.json"
     if not default_cfg.exists():
-        stop("configs/default.json is missing from this ZIP.")
+        stop("configs/default.json is missing from the application folder.")
     shutil.copy2(default_cfg, cfg)
     print(f"[setup] Created local config: {cfg.name}")
     return cfg
@@ -70,7 +74,7 @@ def check_dependencies() -> None:
 
 
 def main() -> None:
-    print(f'[setup] Python: {sys.executable}')
+    print(f'[setup] {"Executable" if getattr(sys, "frozen", False) else "Python"}: {sys.executable}')
     if not getattr(sys, "frozen", False):
         check_dependencies()
     cfg_path = ensure_config()
