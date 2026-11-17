@@ -230,52 +230,46 @@ def activate_calibration(config_path, path):
 
 
 def restore_moved_calibration(config_path, cfg):
-    """Recover a moved explicit selection only by the stored complete-file SHA.
+    """Best-effort relocation hint. Never block launch for absent/edited NPZ.
 
-    Never pick newer geometry or trust a coincident filename. Search only the
-    configured managed calibration directory; archives are not changed. Atomically
-    update the selection after validating the exact archive, preserving settings.
-    RUN_ME calls this before its camera picker and before startup cleanup.
+    If an old absolute path no longer exists, look for the original filename
+    under the configured calibration folder. The user can always recalibrate.
+    File hashes are not required for relocation or execution.
     """
-    stereo = cfg['stereo']
+    stereo = cfg.get('stereo', {})
     if stereo.get('load') != 'explicit':
         return None
     selected = stereo.get('explicit_file')
     if not selected:
-        raise ValueError('stereo.load=explicit requires a selected NPZ path')
+        print('[warning] No explicit calibration path configured; C can create a new calibration.')
+        return None
+
     root = Path(config_path).resolve().parent
-    path = Path(selected)
-    if not path.is_absolute():
-        path = root / path
-    expected = stereo.get('active_sha256')
-    if expected is not None and (not isinstance(expected, str) or len(expected) != 64 or
-                                any(ch not in '0123456789abcdef' for ch in expected)):
-        raise ValueError('invalid selected calibration SHA-256; reselect the known NPZ')
-    if path.is_file():
-        if expected and file_sha256(path) != expected:
-            raise ValueError('selected calibration SHA-256 mismatch; changed NPZ will not be substituted')
-        return path
-    if not expected:
-        raise FileNotFoundError(f'Selected calibration missing: {path}; restore the original NPZ (no recorded SHA for safe relocation)')
-    def anchored(value):
-        p = Path(value)
-        return p if p.is_absolute() else root / p
-    cal_dir = ensure_managed_location(anchored(stereo['calibration_dir']),
-        anchored(cfg['runtime']['root']), 'calibration relocation search')
-    candidates = sorted(cal_dir.rglob('*.npz'), key=lambda p: (p.name != path.name, str(p)))
-    for candidate in candidates:
-        # Do not follow an archive symlink outside the configured managed root.
-        if not candidate.resolve().is_relative_to(cal_dir):
-            continue
+    old_path = Path(selected)
+    if not old_path.is_absolute():
+        old_path = root / old_path
+    if old_path.is_file():
+        return old_path
+
+    cal_dir = Path(stereo.get('calibration_dir', 'runtime/calibrations'))
+    if not cal_dir.is_absolute():
+        cal_dir = root / cal_dir
+    try:
+        matches = sorted(cal_dir.rglob(old_path.name)) if cal_dir.is_dir() else []
+    except OSError as error:
+        print(f'[warning] Could not search moved calibrations: {error}')
+        matches = []
+
+    if matches:
+        candidate = matches[0]
+        print(f'[warning] Original calibration path missing: {old_path}')
+        print(f'[warning] Found same-name calibration candidate: {candidate}; check your camera geometry.')
         try:
-            matches = candidate.is_file() and file_sha256(candidate) == expected
-        except OSError:
-            continue
-        if matches:
-            validate_stereo_bundle(read_bundle(candidate))
-            # A preference write failure must report the actual error rather
-            # than pretending the matching archive was missing.
             stereo.update(activate_calibration(config_path, candidate))
-            print(f'[setup] RESTORED exact moved calibration: {path} -> {candidate} (SHA-256 unchanged)')
-            return candidate
-    raise FileNotFoundError(f'Selected calibration missing: {path}; copy its unchanged runtime/calibrations folder into this project. No identical SHA-256 archive found; no latest-file fallback.')
+        except (OSError, ValueError, TypeError) as error:
+            print(f'[warning] Could not save relocated selection: {error}')
+        return candidate
+
+    print(f'[warning] Saved calibration not found: {old_path}')
+    print('[warning] Continuing startup. Use C to create a new calibration.')
+    return None
