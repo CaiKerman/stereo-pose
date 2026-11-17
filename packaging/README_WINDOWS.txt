@@ -8,6 +8,14 @@ Stereo Pose / PR #10 - Windows 便携版
 6. 本包包含 CUDA 12.8 版 PyTorch，可在支持的 NVIDIA 显卡上加速，没有 CUDA 时由程序选择 CPU；Windows 10/11 x64。
 7. 如 Windows SmartScreen 报未知发布者：当前包未做 Authenticode 代码签名，不能将“已混淆”误认为“已签名”。
 8. 如在另一台计算机运行，摄像头索引、设备设置与物理标定几何需要按实际情况核对。
+9. EXE 旁的 _internal 文件夹是程序运行库，不可只复制 StereoPose.exe 单独运行。
+
+重新封包（原始 PR #11 的 ModuleNotFoundError: stereo_pose.diagnostics）：
+- 原因：PyInstaller 自动发现无法稳定枚举 PyArmor 混淆后的全部内部模块。
+- 已修改 packaging/StereoPose.spec，直接扫描 build/obfuscated/stereo_pose 下所有 .py，把模块逐个列入 hiddenimports。
+- 更新源码后，在仓库根目录双击 BUILD_LOCAL_EXE.bat，构建后使用新的 dist/StereoPose 整个文件夹。
+- 重新构建会重建 dist/StereoPose；如果旧 EXE 文件夹里已有 config.json、runtime 标定和录制数据，请先复制到别处，再放回新目录。
+- 此修复尚未在 Windows 编译环境实测，所以不宣称新生成包已通过运行验证。
 
 保护说明：
 - 第一方 Python 模块以 PyArmor 形式混淆，再由 PyInstaller 作为独立 Windows 程序打包。
