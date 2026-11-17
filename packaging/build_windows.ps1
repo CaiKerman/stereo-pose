@@ -39,8 +39,22 @@ if (-not (Test-Path ".\yolo11n-pose.pt")) {
 # IMPORTANT: --pack reads the UNOBFUSCATED source graph and patches the
 # .spec to replace its modules with PyArmor output. Do not run PyInstaller
 # directly against protected RUN_ME.py: hidden imports will be incomplete.
+$pack_mode = "PyArmor-obfuscated"
 pyarmor gen --pack "packaging\StereoPose.spec" -r (Join-Path $stage "RUN_ME.py") (Join-Path $stage "stereo_pose")
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "PyArmor could not complete (trial licenses can report 'out of license')."
+    Write-Warning "Continuing with PyInstaller-only EXE. The application will run without Python; code protection is weaker."
+    $pack_mode = "PyInstaller-bytecode"
+    python -m PyInstaller --noconfirm --clean "packaging\StereoPose.spec"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "PyInstaller failed to build. No new EXE has been produced."
+        exit 1
+    }
+}
+if (-not (Test-Path "dist\StereoPose\StereoPose.exe")) {
+    Write-Error "The packer did not produce dist\StereoPose\StereoPose.exe."
+    exit 1
+}
 
 New-Item -ItemType Directory -Force -Path "dist\StereoPose\configs" | Out-Null
 Copy-Item "configs\default.json" "dist\StereoPose\configs\default.json" -Force
@@ -53,3 +67,5 @@ Get-ChildItem $backup -Force | ForEach-Object {
     Copy-Item $_.FullName "dist\StereoPose\" -Recurse -Force
 }
 Write-Host "Windows portable package: $repo\dist\StereoPose\StereoPose.exe"
+Write-Host "Packaging mode: $pack_mode"
+Set-Content "dist\StereoPose\PACKAGING_MODE.txt" -Value $pack_mode -Encoding utf8
