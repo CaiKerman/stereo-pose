@@ -81,7 +81,6 @@ def main() -> None:
 
     try:
         from stereo_pose.config import load_config
-        from stereo_pose.diagnostics.doctor import render_doctor, run_doctor
 
         cfg = load_config(cfg_path)
         model = Path(cfg['pose']['model'])
@@ -92,7 +91,11 @@ def main() -> None:
                  f'pose.model={cfg["pose"]["model"]}\nExpected file: {model}\n'
                  'Keep the model from your working version at this path, or update pose.model in config.json.')
         from stereo_pose.calibration.package import restore_moved_calibration
-        restore_moved_calibration(cfg_path, cfg)
+        try:
+            restore_moved_calibration(cfg_path, cfg)
+        except Exception as error:
+            print(f"[warning] Saved calibration path could not be restored: {error}")
+            print("[warning] Startup continues. Open calibration (C) to create a new calibration if needed.")
 
         # Task 002A: visually identify all camera feeds and pick LEFT/RIGHT
         # before the stereo tracking loop opens its two cameras. The choice is
@@ -123,7 +126,12 @@ def main() -> None:
             cfg = load_config(cfg_path)  # reload: the confirmed choice was persisted
             print(f"[setup] cameras confirmed: LEFT=CAM {choice.left}  RIGHT=CAM {choice.right}")
 
-        print(render_doctor(run_doctor(cfg)))
+        try:
+            from stereo_pose.diagnostics.doctor import render_doctor, run_doctor
+            print(render_doctor(run_doctor(cfg)))
+        except Exception as error:
+            print(f"[warning] Optional environment diagnostics unavailable: {error}")
+            print("[warning] Continuing with camera application.")
 
         print("\n" + "=" * 72)
         print("Stereo Pose live test")
