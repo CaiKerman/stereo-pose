@@ -16,12 +16,15 @@ Copy-Item "src\stereo_pose" (Join-Path $stage "stereo_pose") -Recurse
 # Preserve editable user files before replacing a previously built onedir.
 $old = "dist\StereoPose"
 $backup = "build\portable_user_data"
-if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
+# Preserve backups across failed builds. A previous packaging attempt may
+# have removed dist/StereoPose, leaving the sole copy in this backup folder.
 New-Item -ItemType Directory -Force -Path $backup | Out-Null
 foreach ($name in @("config.json", "runtime")) {
     $original = Join-Path $old $name
     if (Test-Path $original) {
-        Copy-Item $original (Join-Path $backup $name) -Recurse -Force
+        $destination = Join-Path $backup $name
+        if (Test-Path $destination) { Remove-Item $destination -Recurse -Force }
+        Copy-Item $original $destination -Recurse -Force
     }
 }
 if (Test-Path $old) {
