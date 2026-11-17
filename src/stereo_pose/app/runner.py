@@ -36,8 +36,6 @@ from stereo_pose.calibration.package import load_readout_registration, activate_
 from stereo_pose.filtering import JointSmoother
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, resolve_joints
-from stereo_pose.diagnostics.joint_diagnostics import format_diagnostic_summary
-from stereo_pose.diagnostics.snapshot import SnapshotPose, save_snapshot
 from stereo_pose.models import FilteredJoint3D, FrameDiagnostics, FrameTiming, JointQuality, PoseFrame
 from stereo_pose.outputs import build_publisher
 from stereo_pose.outputs.csv_recorder import CsvRecorder
@@ -628,7 +626,12 @@ def _run(args, cfg, resources):
             recorder.sample(frame, readout_rows)
 
             if diagnostics_enabled and frame_index % diag_every == 0:
-                print(format_diagnostic_summary(frame_index, diagnostics))
+                try:
+                    from stereo_pose.diagnostics.joint_diagnostics import format_diagnostic_summary
+                    print(format_diagnostic_summary(frame_index, diagnostics))
+                except ImportError as error:
+                    print(f"[warning] Optional joint diagnostics unavailable: {error}")
+                    diagnostics_enabled = False
 
             display_images = (res_l.plot(), res_r.plot())
             if preview_rectified:
@@ -884,6 +887,7 @@ def _run(args, cfg, resources):
                 print(f"[menu] developer overlay {'expanded' if menu_expanded else 'collapsed'}")
             elif key in (ord("s"), ord("S")):
                 try:
+                    from stereo_pose.diagnostics.snapshot import SnapshotPose, save_snapshot
                     snap_left = SnapshotPose(
                         detections=int(count_l),
                         chosen_person_index=chosen_l,
