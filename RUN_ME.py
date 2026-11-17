@@ -8,7 +8,7 @@ import sys
 import traceback
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 os.chdir(ROOT)
@@ -71,7 +71,8 @@ def check_dependencies() -> None:
 
 def main() -> None:
     print(f'[setup] Python: {sys.executable}')
-    check_dependencies()
+    if not getattr(sys, "frozen", False):
+        check_dependencies()
     cfg_path = ensure_config()
 
     try:
