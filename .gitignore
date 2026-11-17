@@ -52,3 +52,6 @@ output/
 build/
 dist/
 *.egg-info/
+
+# Local packager virtual environment
+.build-venv/
