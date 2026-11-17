@@ -10,16 +10,14 @@ Stereo Pose / PR #10 - Windows 便携版
 8. 如在另一台计算机运行，摄像头索引、设备设置与物理标定几何需要按实际情况核对。
 9. EXE 旁的 _internal 文件夹是程序运行库，不可只复制 StereoPose.exe 单独运行。
 
-重新封包（原始 PR #11 的 ModuleNotFoundError: stereo_pose.diagnostics）：
-- 原因：PyInstaller 自动发现无法稳定枚举 PyArmor 混淆后的全部内部模块。
-- 已修改 packaging/StereoPose.spec，直接扫描 build/obfuscated/stereo_pose 下所有 .py，把模块逐个列入 hiddenimports。
-- 更新源码后，在仓库根目录双击 BUILD_LOCAL_EXE.bat，构建后使用新的 dist/StereoPose 整个文件夹。
-- 重新构建会重建 dist/StereoPose；如果旧 EXE 文件夹里已有 config.json、runtime 标定和录制数据，请先复制到别处，再放回新目录。
-- 此修复尚未在 Windows 编译环境实测，所以不宣称新生成包已通过运行验证。
-
-保护说明：
-- 第一方 Python 模块以 PyArmor 形式混淆，再由 PyInstaller 作为独立 Windows 程序打包。
-- 不附加用户输入密钥、远程授权检查、文件哈希门禁或设备绑定。
-- 这是基础混淆/提高逆向成本，不是无法破解的密码学安全承诺。
-- 本包在 CI 中打包，不代表已经在用户的 DJI Action 4 和现场几何中做过实测。
-- Ultralytics/YOLO 与 PyTorch 等第三方组件有各自许可证；外部分发或商业使用前应核对许可条件。
+本次重新修复封装模块缺失（2026-11-17）：
+- 原封包方式让 PyInstaller 直接分析已混淆的入口代码，导致先后缺少 diagnostics、calibration.package 等内部模块。
+- 已移除“扫描混淆产物推测内部模块”的不可靠方案。
+- 新构建从 build/package_source 中完整、未混淆的入口及 stereo_pose 源码进行 PyInstaller 依赖分析，
+  再用 PyArmor 官方的 gen --pack <spec> 替换并封装为受保护的二进制。
+- 原始源代码和打包脚本仍留在 Git 仓库，最终 EXE 目录不包含 src 源码。
+- 构建前自动备份旧 dist/StereoPose/config.json、runtime、*.pt 到
+  build/portable_user_data，构建完成后复制回新 EXE 目录，不进行哈希门禁。
+- 在项目根目录双击 BUILD_LOCAL_EXE.bat 重新封包；原先生成的旧 EXE 不会自行修复。
+- 如已将数据另存到其他位置，继续按照已有配置使用即可。
+- 新版本尚未在 Windows 上验证完整打包与摄像头运行；代码提交不代表构建通过。
