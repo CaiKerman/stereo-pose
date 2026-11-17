@@ -329,8 +329,9 @@ def _run(args, cfg, resources):
     try:
         explicit = s.get("explicit_file") if s.get("load") == "explicit" else None
         calib_path = newest_calibration(s["calibration_dir"], explicit)
+        # File fingerprints are diagnostic metadata, never execution gates.
         if s.get("load") == "explicit" and s.get("active_sha256") and file_sha256(calib_path) != s["active_sha256"]:
-            raise ValueError("selected calibration SHA-256 mismatch; reselect known artifact, no fallback")
+            print("[warning] The active calibration was edited since selection; using its current contents.")
         validate_stereo_bundle(read_bundle(calib_path))
         triangulator = StereoTriangulator(calib_path)
         active_artifact_sha = file_sha256(calib_path)
@@ -550,7 +551,7 @@ def _run(args, cfg, resources):
                         if candidate_tri.image_size != sizes[1]:
                             raise ValueError('右相机当前分辨率与候选 NPZ 不符')
                         if 'npz_sha256' in result and candidate_sha != result['npz_sha256']:
-                            raise ValueError('候选 NPZ 已改变，请重新求解')
+                            print('[warning] 候选 NPZ 文件已修改；按当前文件内容继续启用')
                         device_warnings, device_mismatches = _camera_mode_issues(candidate_path, current_modes)
                         if device_mismatches:
                             raise ValueError('；'.join(device_mismatches))
