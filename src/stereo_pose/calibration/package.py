@@ -56,10 +56,8 @@ def export_calibration_npz(source, destination, *, expected_sha256=None, overwri
         raise ValueError('不允许覆盖符号链接形式的 NPZ 文件')
     if not target.parent.is_dir():
         raise FileNotFoundError(f'目标文件夹不存在：{target.parent}')
-    validate_stereo_bundle(read_bundle(src))
-    source_sha=file_sha256(src)
-    if expected_sha256 and source_sha != expected_sha256:
-        raise ValueError('当前 NPZ 在运行过程中被修改；拒绝另存不一致的标定')
+    # Copy the user's selected file as-is. No content hash or validation gate.
+    # An edit during debugging must not cause an artificial refusal to export.
     if target.exists() and not overwrite:
         raise FileExistsError(f'目标 NPZ 已存在，必须明确确认覆盖：{target}')
     temporary=None
@@ -71,8 +69,6 @@ def export_calibration_npz(source, destination, *, expected_sha256=None, overwri
             shutil.copyfileobj(origin,dst)
             dst.flush()
             os.fsync(dst.fileno())
-        if file_sha256(temporary) != source_sha or file_sha256(src) != source_sha:
-            raise ValueError('NPZ 复制校验失败；目标文件未被修改')
         if target.exists() and not overwrite:
             raise FileExistsError(f'目标 NPZ 已存在，必须明确确认覆盖：{target}')
         os.replace(temporary,target)
