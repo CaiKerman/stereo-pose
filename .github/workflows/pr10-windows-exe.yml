@@ -1,0 +1,47 @@
+name: PR10 Windows portable protected EXE
+
+on:
+  push:
+    branches:
+      - packaging/pr10-windows-exe
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Fetch PR10 packaging branch
+        uses: actions/checkout@v4
+
+      - name: Set up Windows build Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+          cache: pip
+
+      - name: Install CUDA-capable bundled runtime and packers
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch==2.9.1 torchvision==0.24.1 --index-url https://download.pytorch.org/whl/cu128
+          python -m pip install -e ".[live]" pyinstaller==6.16.0 pyarmor==9.3.0
+          python -m pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python-headless
+          python -m pip install --no-deps --force-reinstall opencv-contrib-python==4.11.0.86
+
+      - name: Obfuscate and assemble standalone executable
+        shell: pwsh
+        run: .\packaging\build_windows.ps1
+
+      - name: Publish full portable directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: StereoPose_PR10_Windows_CUDA_Portable
+          path: dist/StereoPose/
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 0
