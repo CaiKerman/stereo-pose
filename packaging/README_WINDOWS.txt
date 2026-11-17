@@ -6,7 +6,7 @@ Stereo Pose / PR #10 - Windows 便携版
 4. 配置、已有的 runtime 文件夹以及模型权重均为可编辑文件；移动旧数据时直接复制到 EXE 同级目录。
 5. 标定、记录和诊断均保存在 EXE 同级的 runtime 文件夹。启动时无需输入任何密钥；不联网验证授权、不绑定设备、不设置到期时间。
 6. 本包包含 CUDA 12.8 版 PyTorch，可在支持的 NVIDIA 显卡上加速，没有 CUDA 时由程序选择 CPU；Windows 10/11 x64。
-7. 如 Windows SmartScreen 报未知发布者：当前包未做 Authenticode 代码签名，不能将“已混淆”误认为“已签名”。
+7. 如 Windows SmartScreen 报未知发布者：当前包未做 Authenticode 代码签名，不能将“已封包”误认为“已签名”。
 8. 如在另一台计算机运行，摄像头索引、设备设置与物理标定几何需要按实际情况核对。
 9. EXE 旁的 _internal 文件夹是程序运行库，不可只复制 StereoPose.exe 单独运行。
 
@@ -21,3 +21,11 @@ Stereo Pose / PR #10 - Windows 便携版
 - 在项目根目录双击 BUILD_LOCAL_EXE.bat 重新封包；原先生成的旧 EXE 不会自行修复。
 - 如已将数据另存到其他位置，继续按照已有配置使用即可。
 - 新版本尚未在 Windows 上验证完整打包与摄像头运行；代码提交不代表构建通过。
+
+2026-11-17 PyArmor 试用许可报错处理：
+- 若构建日志出现 Pyarmor 9.3.0 (trial) 和 ERROR out of license，说明混淆工具的免费许可额度不足，而不是 EXE 已成功打包。
+- 最新封包脚本会在 PyArmor 失败时自动用 PyInstaller 普通独立封包继续，不需要购买 PyArmor 才能拿到 EXE。
+- 普通封包将 Python 字节码打入 EXE，防逆向能力明显弱于有效的 PyArmor 混淆，不提供加密防破解承诺。
+- 成功生成的 EXE 路径：dist\\StereoPose\\StereoPose.exe；PACKAGING_MODE.txt 记录实际封包模式。
+- 若两种打包方式都失败，批处理窗口将报告 BUILD FAILED，而不是无条件打印一个不存在的文件位置。
+- 构建前保留旧的 config.json、runtime、*.pt；EXE、_internal 和其它依赖请整目录分发。
