@@ -32,7 +32,8 @@ def _torch_info() -> dict:
     info = {"installed": False, "version": None, "cuda_available": False, "cuda_device_count": 0}
     try:
         import torch  # noqa: F401
-    except Exception:
+    except Exception as error:
+        info["import_error"] = f"{type(error).__name__}: {error}"
         return info
     info["installed"] = True
     try:
@@ -129,7 +130,8 @@ def render_doctor(info: dict) -> str:
         cuda = f"available, {t['cuda_device_count']} device(s)" if t["cuda_available"] else "not available"
         lines.append(f"  torch             : {t['version']} (CUDA {cuda})")
     else:
-        lines.append("  torch             : NOT INSTALLED")
+        error = t.get("import_error")
+        lines.append(f"  torch             : IMPORT FAILED ({error})" if error else "  torch             : NOT INSTALLED")
     lines.append(f"  pose model        : {info['pose_model']['configured_path']} "
                  f"({'present' if info['pose_model']['exists'] else 'MISSING'})")
     cd = info["calibration_dir"]

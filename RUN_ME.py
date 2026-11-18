@@ -8,9 +8,9 @@ import sys
 import traceback
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-SRC = ROOT / "src"
-sys.path.insert(0, str(SRC))
+ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, str(ROOT / "src"))
 os.chdir(ROOT)
 
 
@@ -21,8 +21,12 @@ def stop(msg: str, details: str = "") -> None:
     print(msg)
     if details:
         print("\n" + details)
-    print("\nNo pip install was performed. No project files were installed into Python.")
-    print("Please use the same Python environment that previously ran your stereo-pose PoC.")
+    if getattr(sys, "frozen", False):
+        print("\nThis is the standalone EXE. It does not require a system Python installation.")
+        print("Keep the entire StereoPose folder together, including its _internal directory.")
+    else:
+        print("\nNo pip install was performed. No project files were installed into Python.")
+        print("Please use the Python environment that ran your stereo-pose PoC.")
     print("=" * 72)
     try:
         input("\nPress Enter to close...")
@@ -38,7 +42,7 @@ def ensure_config() -> Path:
 
     default_cfg = ROOT / "configs" / "default.json"
     if not default_cfg.exists():
-        stop("configs/default.json is missing from this ZIP.")
+        stop("configs/default.json is missing from the application folder.")
     shutil.copy2(default_cfg, cfg)
     print(f"[setup] Created local config: {cfg.name}")
     return cfg
@@ -70,13 +74,13 @@ def check_dependencies() -> None:
 
 
 def main() -> None:
-    print(f'[setup] Python: {sys.executable}')
-    check_dependencies()
+    print(f'[setup] {"Executable" if getattr(sys, "frozen", False) else "Python"}: {sys.executable}')
+    if not getattr(sys, "frozen", False):
+        check_dependencies()
     cfg_path = ensure_config()
 
     try:
         from stereo_pose.config import load_config
-        from stereo_pose.diagnostics.doctor import render_doctor, run_doctor
 
         cfg = load_config(cfg_path)
         model = Path(cfg['pose']['model'])
@@ -87,7 +91,11 @@ def main() -> None:
                  f'pose.model={cfg["pose"]["model"]}\nExpected file: {model}\n'
                  'Keep the model from your working version at this path, or update pose.model in config.json.')
         from stereo_pose.calibration.package import restore_moved_calibration
-        restore_moved_calibration(cfg_path, cfg)
+        try:
+            restore_moved_calibration(cfg_path, cfg)
+        except Exception as error:
+            print(f"[warning] Saved calibration path could not be restored: {error}")
+            print("[warning] Startup continues. Open calibration (C) to create a new calibration if needed.")
 
         # Task 002A: visually identify all camera feeds and pick LEFT/RIGHT
         # before the stereo tracking loop opens its two cameras. The choice is
@@ -118,7 +126,12 @@ def main() -> None:
             cfg = load_config(cfg_path)  # reload: the confirmed choice was persisted
             print(f"[setup] cameras confirmed: LEFT=CAM {choice.left}  RIGHT=CAM {choice.right}")
 
-        print(render_doctor(run_doctor(cfg)))
+        try:
+            from stereo_pose.diagnostics.doctor import render_doctor, run_doctor
+            print(render_doctor(run_doctor(cfg)))
+        except Exception as error:
+            print(f"[warning] Optional environment diagnostics unavailable: {error}")
+            print("[warning] Continuing with camera application.")
 
         print("\n" + "=" * 72)
         print("Stereo Pose live test")

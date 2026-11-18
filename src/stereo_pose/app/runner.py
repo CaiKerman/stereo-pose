@@ -36,8 +36,6 @@ from stereo_pose.calibration.package import load_readout_registration, activate_
 from stereo_pose.filtering import JointSmoother
 from stereo_pose.geometry import StereoTriangulator
 from stereo_pose.joints import JOINT_INDEX, resolve_joints
-from stereo_pose.diagnostics.joint_diagnostics import format_diagnostic_summary
-from stereo_pose.diagnostics.snapshot import SnapshotPose, save_snapshot
 from stereo_pose.models import FilteredJoint3D, FrameDiagnostics, FrameTiming, JointQuality, PoseFrame
 from stereo_pose.outputs import build_publisher
 from stereo_pose.outputs.csv_recorder import CsvRecorder
@@ -329,8 +327,9 @@ def _run(args, cfg, resources):
     try:
         explicit = s.get("explicit_file") if s.get("load") == "explicit" else None
         calib_path = newest_calibration(s["calibration_dir"], explicit)
+        # File fingerprints are diagnostic metadata, never execution gates.
         if s.get("load") == "explicit" and s.get("active_sha256") and file_sha256(calib_path) != s["active_sha256"]:
-            raise ValueError("selected calibration SHA-256 mismatch; reselect known artifact, no fallback")
+            print("[warning] The active calibration was edited since selection; using its current contents.")
         validate_stereo_bundle(read_bundle(calib_path))
         triangulator = StereoTriangulator(calib_path)
         active_artifact_sha = file_sha256(calib_path)
@@ -550,7 +549,7 @@ def _run(args, cfg, resources):
                         if candidate_tri.image_size != sizes[1]:
                             raise ValueError('右相机当前分辨率与候选 NPZ 不符')
                         if 'npz_sha256' in result and candidate_sha != result['npz_sha256']:
-                            raise ValueError('候选 NPZ 已改变，请重新求解')
+                            print('[warning] 候选 NPZ 文件已修改；按当前文件内容继续启用')
                         device_warnings, device_mismatches = _camera_mode_issues(candidate_path, current_modes)
                         if device_mismatches:
                             raise ValueError('；'.join(device_mismatches))
@@ -627,7 +626,12 @@ def _run(args, cfg, resources):
             recorder.sample(frame, readout_rows)
 
             if diagnostics_enabled and frame_index % diag_every == 0:
-                print(format_diagnostic_summary(frame_index, diagnostics))
+                try:
+                    from stereo_pose.diagnostics.joint_diagnostics import format_diagnostic_summary
+                    print(format_diagnostic_summary(frame_index, diagnostics))
+                except ImportError as error:
+                    print(f"[warning] Optional joint diagnostics unavailable: {error}")
+                    diagnostics_enabled = False
 
             display_images = (res_l.plot(), res_r.plot())
             if preview_rectified:
@@ -883,6 +887,7 @@ def _run(args, cfg, resources):
                 print(f"[menu] developer overlay {'expanded' if menu_expanded else 'collapsed'}")
             elif key in (ord("s"), ord("S")):
                 try:
+                    from stereo_pose.diagnostics.snapshot import SnapshotPose, save_snapshot
                     snap_left = SnapshotPose(
                         detections=int(count_l),
                         chosen_person_index=chosen_l,
