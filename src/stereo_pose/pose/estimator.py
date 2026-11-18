@@ -22,11 +22,15 @@ class PoseEstimator:
             )
         try:
             from ultralytics import YOLO
-        except ImportError as e:
-            raise ImportError(
-                "ultralytics is required for live pose inference but is not installed. "
-                "Install the 'live' extra (pip install .[live]) or run offline tests."
-            ) from e
+        except ModuleNotFoundError as error:
+            # A transitive PyTorch dependency can fail inside Ultralytics.
+            # Report that original exception, rather than falsely claiming
+            # Ultralytics itself is not installed.
+            if error.name != "ultralytics":
+                raise
+            raise ModuleNotFoundError(
+                "Ultralytics is unavailable in the current Python runtime."
+            ) from error
 
         self.model = YOLO(str(model_path))
         self.device = device
