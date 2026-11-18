@@ -28,6 +28,8 @@ ultra_data, ultra_bins, ultra_hidden = collect_all("ultralytics")
 other_hidden = [
     "cv2.aruco", "tkinter", "tkinter.ttk",
     "tkinter.filedialog", "tkinter.font",
+    # PyTorch 2.9 imports unittest.mock internally during torch initialization.
+    "unittest", "unittest.mock",
 ]
 
 a = Analysis(
@@ -39,7 +41,9 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["pytest", "unittest", "IPython", "jupyterlab", "notebook"],
+    # Avoid aggressive excludes: PyTorch / Ultralytics import auxiliary modules
+    # at runtime. Package size is preferable to shipping a broken executable.
+    excludes=[],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
